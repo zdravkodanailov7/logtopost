@@ -1,0 +1,64 @@
+# Ignore Node modules
+/backend/node_modules
+/frontend/node_modules
+
+# Optional extras
+**/.env*
+*.log
+dist
+
+# Ignore environment files
+**/.env
+**/.env.*
+
+# Node modules
+/backend/node_modules
+/frontend/node_modules
+
+# Next.js build
+/frontend/.next
+/frontend/out
+
+# Vercel
+/frontend/.vercel
+
+# OS/editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Env files
+**/.env
+**/.env.*
+
+# Logs
+*.log
+logs/
+
+# Node modules
+/backend/node_modules
+/frontend/node_modules
+
+# Build/output
+/frontend/.next
+/frontend/out
+/frontend/.vercel
+/backend/dist
+/backend/build
+
+# OS + editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Env files
+**/.env
+**/.env.*
+
+# Logs
+*.log
+logs/
+
+# Drizzle’s ephemeral journal
+/backend/drizzle/meta/_journal.json
+
