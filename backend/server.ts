@@ -15,6 +15,8 @@ const PORT = process.env.PORT || 5001;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
+  'https://logtopost.com',
+  'https://www.logtopost.com',
   process.env.FRONTEND_URL
 ].filter((origin): origin is string => Boolean(origin));
 
