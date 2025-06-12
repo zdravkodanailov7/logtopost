@@ -31,10 +31,10 @@ export default function LoginPage() {
       <header className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/30">
         <div className="container mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
           <Link href="/" className="flex items-center space-x-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
-              <span className="text-xs font-bold text-primary-foreground">L</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#162216] transition-all duration-500 ease-in-out">
+              <span className="text-lg font-bold text-[#00B23C]">LP</span>
             </div>
-            <h1 className="text-sm font-semibold text-foreground">LogToPost</h1>
+            <h1 className="text-xl font-semibold text-foreground transition-colors duration-500 ease-in-out">LogToPost</h1>
           </Link>
           
           <ThemeToggle />
