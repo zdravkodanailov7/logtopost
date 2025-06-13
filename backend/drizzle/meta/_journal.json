@@ -15,6 +15,13 @@
       "when": 1749674018721,
       "tag": "0001_curved_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1749814986176,
+      "tag": "0002_perpetual_randall",
+      "breakpoints": true
     }
   ]
 }

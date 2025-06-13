@@ -5,9 +5,10 @@ interface DateNavProps {
     date: Date;
     onPrevious: () => void;
     onNext: () => void;
+    onDateClick?: () => void;
 }
 
-export function DateNav({ date, onPrevious, onNext }: DateNavProps) {
+export function DateNav({ date, onPrevious, onNext, onDateClick }: DateNavProps) {
     // Format date for display (e.g., "02/12/2025")
     const formatDate = (date: Date) => {
         return date.toLocaleDateString('en-US', {
@@ -29,7 +30,10 @@ export function DateNav({ date, onPrevious, onNext }: DateNavProps) {
                     <ChevronLeft className="h-2.5 w-2.5" />
                 </Button>
                 
-                <h1 className="text-xs font-normal text-foreground">
+                <h1 
+                    className={`text-xs font-normal text-foreground ${onDateClick ? 'cursor-pointer hover:text-primary transition-colors' : ''}`}
+                    onClick={onDateClick}
+                >
                     {formatDate(date)}
                 </h1>
                 
