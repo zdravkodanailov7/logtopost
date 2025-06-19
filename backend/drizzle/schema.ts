@@ -1,16 +1,30 @@
-import { pgTable, unique, uuid, varchar, text, timestamp, foreignKey, date } from "drizzle-orm/pg-core"
+import { pgTable, foreignKey, uuid, text, varchar, timestamp, unique, date, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
+export const postStatusEnum = pgEnum('post_status', ['pending', 'approved', 'rejected']);
 
 
-export const users = pgTable("users", {
+
+export const posts = pgTable("posts", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
-	email: varchar({ length: 255 }).notNull(),
-	password: text().notNull(),
+	content: text().notNull(),
+	status: postStatusEnum("status").default('pending').notNull(),
+	userId: uuid("user_id").notNull(),
+	dailyLogId: uuid("daily_log_id"),
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
+	rejectionReason: text("rejection_reason"),
 }, (table) => [
-	unique("users_email_unique").on(table.email),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "posts_user_id_users_id_fk"
+		}),
+	foreignKey({
+			columns: [table.dailyLogId],
+			foreignColumns: [dailyLogs.id],
+			name: "posts_daily_log_id_daily_logs_id_fk"
+		}),
 ]);
 
 export const dailyLogs = pgTable("daily_logs", {
@@ -27,6 +41,17 @@ export const dailyLogs = pgTable("daily_logs", {
 			name: "daily_logs_user_id_users_id_fk"
 		}),
 	unique("daily_logs_user_id_log_date_unique").on(table.logDate, table.userId),
+]);
+
+export const users = pgTable("users", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	email: varchar({ length: 255 }).notNull(),
+	password: text().notNull(),
+	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
+	customPrompt: text("custom_prompt"),
+}, (table) => [
+	unique("users_email_unique").on(table.email),
 ]);
 
 export const emails = pgTable("emails", {

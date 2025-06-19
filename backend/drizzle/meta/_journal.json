@@ -22,6 +22,41 @@
       "when": 1749814986176,
       "tag": "0002_perpetual_randall",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1750193037177,
+      "tag": "0003_skinny_jazinda",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1750366880598,
+      "tag": "0004_tricky_exiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1750367279616,
+      "tag": "0005_tough_wolf_cub",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1750372489710,
+      "tag": "0006_fast_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1750373231554,
+      "tag": "0007_stormy_nocturne",
+      "breakpoints": true
     }
   ]
 }

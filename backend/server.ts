@@ -3,9 +3,10 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { eq, and } from 'drizzle-orm';
 import { db } from './db';
-import { users, emails, dailyLogs } from './schema';
+import { users, emails, dailyLogs, posts } from './schema';
 import { hashPassword, comparePassword, generateToken, verifyToken } from './utils/auth';
 import dotenv from 'dotenv';
+import aiRoutes from './routes/ai';
 
 dotenv.config();
 
@@ -433,9 +434,286 @@ app.put('/api/logs/:date', async (req, res) => {
   }
 });
 
+// POSTS ENDPOINTS
+
+// Get all posts for the authenticated user
+app.get('/api/posts', async (req, res) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const userPosts = await db
+      .select()
+      .from(posts)
+      .where(eq(posts.user_id, userId))
+      .orderBy(posts.created_at);
+
+    res.json({ 
+      posts: userPosts,
+      count: userPosts.length 
+    });
+
+  } catch (error) {
+    console.error('Get posts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get posts for a specific date (based on daily log date)
+app.get('/api/posts/by-date/:date', async (req, res) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { date } = req.params;
+    
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    // Find daily log for this date and user
+    const [dailyLog] = await db
+      .select()
+      .from(dailyLogs)
+      .where(and(
+        eq(dailyLogs.user_id, userId),
+        eq(dailyLogs.log_date, date)
+      ))
+      .limit(1);
+
+    if (!dailyLog) {
+      // No daily log for this date, return empty posts
+      return res.json({ 
+        posts: [],
+        count: 0,
+        daily_log: null
+      });
+    }
+
+    // Get posts linked to this daily log
+    const postsForDate = await db
+      .select()
+      .from(posts)
+      .where(and(
+        eq(posts.user_id, userId),
+        eq(posts.daily_log_id, dailyLog.id)
+      ))
+      .orderBy(posts.created_at);
+
+    res.json({ 
+      posts: postsForDate,
+      count: postsForDate.length,
+      daily_log: dailyLog
+    });
+
+  } catch (error) {
+    console.error('Get posts by date error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create a new post
+app.post('/api/posts', async (req, res) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { content, status = 'pending', daily_log_id } = req.body;
+    
+    if (!content) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // Create new post
+    const [newPost] = await db
+      .insert(posts)
+      .values({
+        user_id: userId,
+        content: content,
+        status: status,
+        daily_log_id: daily_log_id || null,
+      })
+      .returning();
+
+    res.status(201).json({ 
+      message: 'Post created successfully',
+      post: newPost 
+    });
+
+  } catch (error) {
+    console.error('Create post error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update an existing post
+app.put('/api/posts/:id', async (req, res) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    const { content, platform, status } = req.body;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Post ID is required' });
+    }
+
+    // Build update object with only provided fields
+    const updateData: any = { updated_at: new Date() };
+    if (content !== undefined) updateData.content = content;
+    if (platform !== undefined) updateData.platform = platform;
+    if (status !== undefined) updateData.status = status;
+
+    // Update the post (only if it belongs to the user)
+    const [updatedPost] = await db
+      .update(posts)
+      .set(updateData)
+      .where(and(eq(posts.id, id), eq(posts.user_id, userId)))
+      .returning();
+
+    if (!updatedPost) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    res.json({ 
+      message: 'Post updated successfully',
+      post: updatedPost 
+    });
+
+  } catch (error) {
+    console.error('Update post error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a post
+app.delete('/api/posts/:id', async (req, res) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Post ID is required' });
+    }
+
+    // Delete the post (only if it belongs to the user)
+    const [deletedPost] = await db
+      .delete(posts)
+      .where(and(eq(posts.id, id), eq(posts.user_id, userId)))
+      .returning({ id: posts.id });
+
+    if (!deletedPost) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    res.json({ 
+      message: 'Post deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete post error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Add AI routes
+app.use('/api/ai', aiRoutes);
+
+// User profile endpoints
+app.get('/api/user/profile', async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const [user] = await db
+      .select({ 
+        id: users.id,
+        email: users.email,
+        custom_prompt: users.custom_prompt
+      })
+      .from(users)
+      .where(eq(users.id, decoded.userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+app.put('/api/user/profile', async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { custom_prompt } = req.body;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({ 
+        custom_prompt: custom_prompt || null,
+        updated_at: new Date()
+      })
+      .where(eq(users.id, decoded.userId))
+      .returning({
+        id: users.id,
+        email: users.email,
+        custom_prompt: users.custom_prompt
+      });
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
 });
 
 app.listen(PORT, () => {

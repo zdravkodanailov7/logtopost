@@ -1,14 +1,27 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Wand2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface DateNavProps {
     date: Date;
     onPrevious: () => void;
     onNext: () => void;
     onDateClick?: () => void;
+    onGeneratePosts?: () => void;
+    isGenerateDisabled?: boolean;
+    showGenerateButton?: boolean;
 }
 
-export function DateNav({ date, onPrevious, onNext, onDateClick }: DateNavProps) {
+export function DateNav({ 
+    date, 
+    onPrevious, 
+    onNext, 
+    onDateClick, 
+    onGeneratePosts, 
+    isGenerateDisabled = false,
+    showGenerateButton = false 
+}: DateNavProps) {
     // Format date for display (e.g., "02/12/2025")
     const formatDate = (date: Date) => {
         return date.toLocaleDateString('en-US', {
@@ -19,7 +32,7 @@ export function DateNav({ date, onPrevious, onNext, onDateClick }: DateNavProps)
     };
 
     return (
-        <div className="w-full border-border p-1 flex-shrink-0">
+        <div className="w-full border-border p-1 flex-shrink-0 flex justify-center">
             <div className="flex items-center gap-1">
                 <Button
                     variant="ghost"
@@ -45,6 +58,27 @@ export function DateNav({ date, onPrevious, onNext, onDateClick }: DateNavProps)
                 >
                     <ChevronRight className="h-2.5 w-2.5" />
                 </Button>
+                
+                {showGenerateButton && onGeneratePosts && (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={onGeneratePosts}
+                                    disabled={isGenerateDisabled}
+                                    className="ml-2"
+                                >
+                                    <Wand2 className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Generate posts from selected text</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
             </div>
         </div>
     );

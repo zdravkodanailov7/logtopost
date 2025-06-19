@@ -1,0 +1,2 @@
+ALTER TABLE "posts" ADD COLUMN "daily_log_id" uuid;--> statement-breakpoint
+ALTER TABLE "posts" ADD CONSTRAINT "posts_daily_log_id_daily_logs_id_fk" FOREIGN KEY ("daily_log_id") REFERENCES "public"."daily_logs"("id") ON DELETE no action ON UPDATE no action;

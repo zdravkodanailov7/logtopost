@@ -24,6 +24,7 @@ import {
     Settings,
     Moon,
     Sun,
+    MessageSquare,
 } from 'lucide-react';
 import {
     Sidebar,
@@ -37,6 +38,8 @@ import {
 } from '@/components/ui/sidebar';
 import Link from "next/link";
 import LogsComponent from '@/components/LogsComponent';
+import PostsComponent from '@/components/PostsComponent';
+import { ProfileComponent } from '@/components/ProfileComponent';
 import UserDropdown from '@/components/UserDropdown';
 
 export default function DashboardPage() {
@@ -85,6 +88,16 @@ export default function DashboardPage() {
             key: "logs",
             icon: FileText,
         },
+        {
+            title: "Posts",
+            key: "posts",
+            icon: MessageSquare,
+        },
+        {
+            title: "Profile",
+            key: "profile",
+            icon: Settings,
+        },
     ];
 
     return (
@@ -127,6 +140,12 @@ export default function DashboardPage() {
                     {/* Conditional Content Based on Active Sidebar Item */}
                     {activeSidebarItem === 'logs' && (
                         <LogsComponent />
+                    )}
+                    {activeSidebarItem === 'posts' && (
+                        <PostsComponent />
+                    )}
+                    {activeSidebarItem === 'profile' && (
+                        <ProfileComponent />
                     )}
                 </div>
             </SidebarInset>

@@ -1,18 +1,34 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DateNav } from './DateNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLogByDate, createLog, updateLog, DailyLog } from '@/lib/logs';
+import axios from 'axios';
+import { Button } from '@/components/ui/button';
+import { Wand2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function LogsComponent() {
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState(() => {
+    // Initialize date from localStorage or default to today (shared with PostsComponent)
+    if (typeof window !== 'undefined') {
+      const savedDate = localStorage.getItem('selected_date');
+      if (savedDate) {
+        return new Date(savedDate);
+      }
+    }
+    return new Date();
+  });
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logExists, setLogExists] = useState(false);
   const [currentLog, setCurrentLog] = useState<DailyLog | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   
   const { isAuthenticated, user } = useAuth();
 
@@ -115,16 +131,64 @@ export default function LogsComponent() {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() - 1);
     setDate(newDate);
+    localStorage.setItem('selected_date', newDate.toISOString());
   };
 
   const goToNextDay = () => {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() + 1);
     setDate(newDate);
+    localStorage.setItem('selected_date', newDate.toISOString());
   };
 
   const goToToday = () => {
-    setDate(new Date());
+    const newDate = new Date();
+    setDate(newDate);
+    localStorage.setItem('selected_date', newDate.toISOString());
+  };
+
+  // Handle selection change in textarea
+  const handleSelectionChange = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const selection = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+      setSelectedText(selection);
+    }
+  };
+
+  // Send selected text to AI endpoint
+  const handleSendToAI = async () => {
+    if (!selectedText) return;
+    setAiLoading(true);
+    try {
+      // Get token from localStorage and add Authorization header
+      const token = localStorage.getItem('auth_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
+        { 
+          logText: selectedText,
+          dailyLogId: currentLog?.id 
+        },
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+      const data = res.data;
+      console.log('AI generated posts:', data.tweets);
+      console.log('Saved posts:', data.saved_posts);
+      // You could show a success message here
+    } catch (err) {
+      console.error('Error sending to AI:', err);
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // Don't show anything if not authenticated
@@ -138,10 +202,17 @@ export default function LogsComponent() {
 
   return (
     <div className="h-full flex flex-col">
-      <DateNav date={date} onPrevious={goToPreviousDay} onNext={goToNextDay} onDateClick={goToToday} />
-      
+      <DateNav 
+        date={date} 
+        onPrevious={goToPreviousDay} 
+        onNext={goToNextDay} 
+        onDateClick={goToToday} 
+        onGeneratePosts={handleSendToAI}
+        isGenerateDisabled={!selectedText || aiLoading}
+        showGenerateButton={true}
+      />
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="px-[100px] pt-[50px] pb-[100px]">
+        <div className="px-[50px] lg:px-[300px] pt-[50px] lg:pt-[50px] pb-[100px] lg:pb-[200px]">
           <h1 className="text-3xl font-bold pb-[10px]">
             {date.toLocaleDateString('en-US', {
               weekday: 'long',
@@ -167,6 +238,7 @@ export default function LogsComponent() {
             /* Existing log - show textarea */
             <div className="relative">
               <textarea
+                ref={textareaRef}
                 className="w-full text-xs bg-background text-foreground
                            placeholder:text-muted-foreground focus:outline-none
                            resize-none border-none overflow-hidden min-h-[50vh]"
@@ -177,12 +249,13 @@ export default function LogsComponent() {
                   // Auto-resize textarea to fit content
                   e.target.style.height = 'auto';
                   e.target.style.height = `${e.target.scrollHeight}px`;
+                  setSelectedText(''); // Clear selection on change
                 }}
                 onBlur={e => saveLog(e.target.value)}
+                onSelect={handleSelectionChange}
                 placeholder="Write your log for today…"
                 disabled={saving}
               />
-              
               {/* Saving indicator */}
               {saving && (
                 <div className="absolute top-2 right-2 text-xs text-muted-foreground">

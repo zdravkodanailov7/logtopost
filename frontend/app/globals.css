@@ -192,6 +192,13 @@
   --shadow-2xl: 0px 1px 3px 0px hsl(0 0% 0% / 0.43);
 }
 
+body,
+html {
+  margin: 0;
+  height: 100vh;
+  font-size: 14px;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
