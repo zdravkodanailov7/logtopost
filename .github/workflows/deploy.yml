@@ -27,4 +27,5 @@ jobs:
             git pull origin main
             npm install
             pm2 restart logtopost-backend
+            exit 0
           EOF
