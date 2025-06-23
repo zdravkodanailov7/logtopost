@@ -16,13 +16,10 @@ const openai = new OpenAI({
 });
 
 // Default prompt fallback
-const DEFAULT_PROMPT = `You are Zdravko, a 20-year-old dev building SaaS apps, with a dark sense of humour and a blunt, no-bullshit tone.
+const DEFAULT_PROMPT = `You are a developer building SaaS apps, with a dark sense of humour and a blunt, no-bullshit tone.
 
-Here is today's log:
-{LOG_TEXT}
-
-Generate tweets based on what Zdravko did or learned today.
-Stick to his voice: sharp, a bit cynical, occasionally funny, but never soft or self-indulgent.
+Generate tweets based on what you did or learned today.
+Stick to your voice: sharp, a bit cynical, occasionally funny, but never soft or self-indulgent.
 No therapy-speak. No "i regret eating this" nonsense. No vague life lessons or cringe reflections.
 Make them sound like someone who's actually building, messing up, and learning—without crying about it.
 They can be observations, questions, mini-rants, or dry one-liners.
@@ -34,16 +31,7 @@ Rules:
 - Use British spelling
 - Swear words allowed but not overused
 - Avoid soft or sentimental takes
-- Keep it real, not corny
-
-Return the response as a JSON array of strings, where each string is a tweet. Example format:
-{
-  "tweets": [
-    "first tweet here",
-    "second tweet here",
-    "third tweet here"
-  ]
-}`;
+- Keep it real, not corny`;
 
 // Authentication helper for this router
 const authenticateRequest = (req: Request): string | null => {
@@ -91,17 +79,29 @@ router.post('/generate-posts', async (req: Request, res: Response) => {
       .limit(1);
 
     // Use custom prompt if available, otherwise use default
-    let prompt = user?.custom_prompt || DEFAULT_PROMPT;
+    const basePrompt = user?.custom_prompt || DEFAULT_PROMPT;
     
-    // Replace placeholder with actual log text
-    prompt = prompt.replace('{LOG_TEXT}', logText);
+    // Build the complete prompt with log text and JSON format instructions
+    const prompt = `${basePrompt}
+
+Here is today's log:
+${logText}
+
+Return the response as a JSON array of strings, where each string is a tweet. Example format:
+{
+  "tweets": [
+    "first tweet here",
+    "second tweet here", 
+    "third tweet here"
+  ]
+}`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "You are a tweet generator that returns JSON arrays of tweets."
+          content: "You are a tweet generator that MUST return ONLY valid JSON arrays of tweets. No extra text or formatting."
         },
         {
           role: "user",
@@ -111,7 +111,53 @@ router.post('/generate-posts', async (req: Request, res: Response) => {
     });
 
     const response = completion.choices[0].message.content;
-    const parsedResponse = JSON.parse(response || '{"tweets": []}');
+    console.log('Raw AI response:', response);
+    
+    // Try to parse the response with better error handling
+    let parsedResponse;
+    try {
+      if (!response) {
+        throw new Error('Empty response from AI');
+      }
+      
+      // Try to extract JSON from the response if it has extra text
+      let jsonString = response.trim();
+      
+      // Look for JSON object boundaries
+      const jsonStart = jsonString.indexOf('{');
+      const jsonEnd = jsonString.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        jsonString = jsonString.substring(jsonStart, jsonEnd + 1);
+      }
+      
+      parsedResponse = JSON.parse(jsonString);
+      
+      // Validate the structure
+      if (!parsedResponse.tweets || !Array.isArray(parsedResponse.tweets)) {
+        throw new Error('Invalid response structure');
+      }
+      
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Response that failed to parse:', response);
+      
+      // Fallback: try to extract tweets from a malformed response
+      try {
+        // Simple regex to find quoted strings that look like tweets
+        const tweetMatches = response?.match(/"([^"]{10,280})"/g);
+        if (tweetMatches && tweetMatches.length > 0) {
+          const extractedTweets = tweetMatches.map(match => match.slice(1, -1)); // Remove quotes
+          parsedResponse = { tweets: extractedTweets };
+          console.log('Extracted tweets from malformed response:', extractedTweets);
+        } else {
+          throw new Error('Could not extract tweets from response');
+        }
+      } catch (fallbackError) {
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error';
+        throw new Error(`Failed to parse AI response: ${errorMessage}`);
+      }
+    }
 
     // Save generated posts to database with pending status
     const savedPosts = [];
@@ -122,7 +168,7 @@ router.post('/generate-posts', async (req: Request, res: Response) => {
           .values({
             user_id: userId,
             content: tweetContent,
-            status: 'pending', // Updated to use new status system
+            used: false, // New posts start as unused
             daily_log_id: dailyLogId || null,
           })
           .returning();

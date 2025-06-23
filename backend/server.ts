@@ -565,7 +565,7 @@ app.put('/api/posts/:id', async (req, res) => {
     }
 
     const { id } = req.params;
-    const { content, platform, status } = req.body;
+    const { content, platform, used } = req.body;
     
     if (!id) {
       return res.status(400).json({ error: 'Post ID is required' });
@@ -575,7 +575,7 @@ app.put('/api/posts/:id', async (req, res) => {
     const updateData: any = { updated_at: new Date() };
     if (content !== undefined) updateData.content = content;
     if (platform !== undefined) updateData.platform = platform;
-    if (status !== undefined) updateData.status = status;
+    if (used !== undefined) updateData.used = used;
 
     // Update the post (only if it belongs to the user)
     const [updatedPost] = await db

@@ -68,7 +68,7 @@ export function DateNav({
                                     size="icon"
                                     onClick={onGeneratePosts}
                                     disabled={isGenerateDisabled}
-                                    className="ml-2"
+                                    className="ml-2 cursor-pointer"
                                 >
                                     <Wand2 className="h-4 w-4" />
                                 </Button>

@@ -1,5 +1,5 @@
 // backend/schema/index.ts
-import { pgTable, uuid, timestamp, varchar, text, date, integer, unique, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, varchar, text, date, integer, unique, pgEnum, boolean } from 'drizzle-orm/pg-core';
 
 // Define the post status enum
 export const postStatusEnum = pgEnum('post_status', ['pending', 'approved', 'rejected']);
@@ -38,8 +38,7 @@ export const posts = pgTable('posts', {
   user_id: uuid('user_id').references(() => users.id).notNull(),
   daily_log_id: uuid('daily_log_id').references(() => dailyLogs.id),
   content: text('content').notNull(),
-  status: postStatusEnum('status').default('pending').notNull(),
-  rejection_reason: text('rejection_reason'),
+  used: boolean('used').default(false).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });

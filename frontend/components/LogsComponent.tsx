@@ -10,16 +10,8 @@ import { Wand2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function LogsComponent() {
-  const [date, setDate] = useState(() => {
-    // Initialize date from localStorage or default to today (shared with PostsComponent)
-    if (typeof window !== 'undefined') {
-      const savedDate = localStorage.getItem('selected_date');
-      if (savedDate) {
-        return new Date(savedDate);
-      }
-    }
-    return new Date();
-  });
+  const [date, setDate] = useState(new Date());
+  const [isClient, setIsClient] = useState(false);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,9 +53,19 @@ export default function LogsComponent() {
     }
   };
 
+  // Initialize client state and load saved date
+  useEffect(() => {
+    setIsClient(true);
+    // Load saved date from localStorage after hydration
+    const savedDate = localStorage.getItem('selected_date');
+    if (savedDate) {
+      setDate(new Date(savedDate));
+    }
+  }, []);
+
   // Load log when date changes or user authentication status changes
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && isClient) {
       loadLog(date);
     } else {
       setText('');
@@ -71,7 +73,7 @@ export default function LogsComponent() {
       setCurrentLog(null);
       setLoading(false);
     }
-  }, [date, isAuthenticated]);
+  }, [date, isAuthenticated, isClient]);
 
   // Auto-resize textarea when text changes
   useEffect(() => {
@@ -131,20 +133,26 @@ export default function LogsComponent() {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() - 1);
     setDate(newDate);
-    localStorage.setItem('selected_date', newDate.toISOString());
+    if (isClient) {
+      localStorage.setItem('selected_date', newDate.toISOString());
+    }
   };
 
   const goToNextDay = () => {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() + 1);
     setDate(newDate);
-    localStorage.setItem('selected_date', newDate.toISOString());
+    if (isClient) {
+      localStorage.setItem('selected_date', newDate.toISOString());
+    }
   };
 
   const goToToday = () => {
     const newDate = new Date();
     setDate(newDate);
-    localStorage.setItem('selected_date', newDate.toISOString());
+    if (isClient) {
+      localStorage.setItem('selected_date', newDate.toISOString());
+    }
   };
 
   // Handle selection change in textarea

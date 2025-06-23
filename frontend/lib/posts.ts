@@ -5,10 +5,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 export interface Post {
   id: string;
   content: string;
-  status: 'pending' | 'approved' | 'rejected';
+  used: boolean;
   user_id: string;
   daily_log_id?: string;
-  rejection_reason?: string;
   created_at: string;
   updated_at: string;
 }
@@ -98,51 +97,18 @@ export const updatePost = async (id: string, updates: {
   }
 };
 
-// Update post status
-export const updatePostStatus = async (id: string, status: 'pending' | 'approved' | 'rejected', rejectionReason?: string): Promise<UpdatePostResponse> => {
+// Toggle post used status
+export const togglePostUsed = async (id: string, used: boolean): Promise<UpdatePostResponse> => {
   try {
-    const updates: any = { status };
-    if (status === 'rejected' && rejectionReason) {
-      updates.rejection_reason = rejectionReason;
-    } else if (status !== 'rejected') {
-      updates.rejection_reason = null; // Clear rejection reason when not rejecting
-    }
-    
-    const response = await api.put(`/api/posts/${id}`, updates);
+    const response = await api.put(`/api/posts/${id}`, { used });
     return response.data;
   } catch (error) {
-    console.error('Error updating post status:', error);
+    console.error('Error updating post used status:', error);
     throw error;
   }
 };
 
-// Approve a post
-export const approvePost = async (id: string): Promise<UpdatePostResponse> => {
-  try {
-    const response = await api.put(`/api/posts/${id}`, { 
-      status: 'approved',
-      rejection_reason: null
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error approving post:', error);
-    throw error;
-  }
-};
 
-// Reject a post
-export const rejectPost = async (id: string, reason?: string): Promise<UpdatePostResponse> => {
-  try {
-    const response = await api.put(`/api/posts/${id}`, { 
-      status: 'rejected',
-      rejection_reason: reason || null
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error rejecting post:', error);
-    throw error;
-  }
-};
 
 // Delete a post
 export const deletePost = async (id: string): Promise<{ message: string }> => {
