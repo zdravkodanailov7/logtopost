@@ -11,6 +11,8 @@ interface DateNavProps {
     onGeneratePosts?: () => void;
     isGenerateDisabled?: boolean;
     showGenerateButton?: boolean;
+    textSize?: 'small' | 'medium' | 'large';
+    onTextSizeChange?: (size: 'small' | 'medium' | 'large') => void;
 }
 
 export function DateNav({ 
@@ -20,7 +22,9 @@ export function DateNav({
     onDateClick, 
     onGeneratePosts, 
     isGenerateDisabled = false,
-    showGenerateButton = false 
+    showGenerateButton = false,
+    textSize = 'small',
+    onTextSizeChange
 }: DateNavProps) {
     // Format date for display (e.g., "02/12/2025")
     const formatDate = (date: Date) => {
@@ -29,6 +33,25 @@ export function DateNav({
             day: '2-digit',
             year: 'numeric'
         });
+    };
+
+    // Cycle through text sizes
+    const handleTextSizeClick = () => {
+        if (!onTextSizeChange) return;
+        
+        const nextSize = textSize === 'small' ? 'medium' : 
+                        textSize === 'medium' ? 'large' : 'small';
+        onTextSizeChange(nextSize);
+    };
+
+    // Get display text for current size
+    const getTextSizeDisplay = () => {
+        switch (textSize) {
+            case 'small': return 'S';
+            case 'medium': return 'M';
+            case 'large': return 'L';
+            default: return 'S';
+        }
     };
 
     return (
@@ -58,6 +81,15 @@ export function DateNav({
                 >
                     <ChevronRight className="h-2.5 w-2.5" />
                 </Button>
+
+                {onTextSizeChange && (
+                    <button
+                        onClick={handleTextSizeClick}
+                        className="ml-3 px-2 py-1 w-6 text-xs font-medium text-foreground hover:text-primary cursor-pointer transition-colors flex items-center justify-center"
+                    >
+                        {getTextSizeDisplay()}
+                    </button>
+                )}
                 
                 {showGenerateButton && onGeneratePosts && (
                     <TooltipProvider>

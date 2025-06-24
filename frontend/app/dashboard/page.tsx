@@ -36,6 +36,7 @@ import {
     SidebarMenuItem,
     SidebarProvider,
 } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Link from "next/link";
 import LogsComponent from '@/components/LogsComponent';
 import PostsComponent from '@/components/PostsComponent';
@@ -56,6 +57,20 @@ export default function DashboardPage() {
         }
     }, [loading, isAuthenticated, router]);
 
+    // Add keyboard shortcut to go back to homepage
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            // Ctrl+Shift+H to go to homepage
+            if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+                e.preventDefault();
+                router.push('/');
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, [router]);
+
     const handleLogout = () => {
         logout();
         router.push('/');
@@ -63,6 +78,10 @@ export default function DashboardPage() {
 
     const toggleTheme = () => {
         setTheme(theme === 'light' ? 'dark' : 'light');
+    };
+
+    const goToHomepage = () => {
+        router.push('/');
     };
 
     // Show loading spinner while checking authentication
@@ -103,8 +122,8 @@ export default function DashboardPage() {
     return (
         <SidebarProvider>
             <Sidebar>
-                <SidebarHeader className="h-7 flex items-center justify-center bg-muted/50">
-                    <div className="flex items-center space-x-2 w-full">
+                <SidebarHeader className="h-7 flex items-center justify-between bg-muted/50 px-2">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
                         <UserDropdown 
                             userEmail={user?.email}
                             theme={theme}

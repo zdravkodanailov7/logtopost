@@ -1,20 +1,195 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Input } from "@/components/ui/input";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from "@/components/ui/form";
 import Link from "next/link";
+import { useState, useEffect, useRef } from "react";
+import { useForm } from "react-hook-form";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import * as motion from "motion/react-client";
+import { FaXTwitter } from "react-icons/fa6";
+import { Loader2 } from "lucide-react";
+import SplitText from "@/components/ui/split-text";
+import { Counter, CounterRef } from "@/components/counter";
+import { SmoothCursor } from "@/components/ui/smooth-cursor";
+import { MorphingText } from "@/components/ui/morphing-text";
+
+const formSchema = z.object({
+  email: z
+    .string({ required_error: "Email address is required." })
+    .email("Please enter a valid email address."),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+function WaitlistForm({ onUserAdded }: { onUserAdded?: () => void }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
+
+  async function onSubmit(data: FormValues) {
+    setIsSubmitting(true);
+    form.clearErrors(); // clear errors
+
+    const validationResult = formSchema.safeParse(data);
+
+    if (!validationResult.success) {
+      // Show validation errors as toasts
+      validationResult.error.errors.forEach((error) => {
+        toast.error(error.message);
+        form.setError(error.path[0] as keyof FormValues, {
+          type: "manual",
+          message: error.message,
+        });
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Start timer for minimum loading time
+    const startTime = Date.now();
+    const minLoadingTime = 1000; // 1 second
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/emails/waitlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validationResult.data),
+      });
+
+      let responseBody = {};
+      try {
+        // 204
+        const text = await response.text();
+        if (text) {
+          responseBody = JSON.parse(text);
+        }
+      } catch (parseError) {
+        console.error("Failed to parse response body:", parseError);
+        if (!response.ok) {
+          throw new Error(
+            `HTTP error ${response.status}: ${
+              response.statusText || "Request failed"
+            }`
+          );
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          (responseBody as { error?: string })?.error ||
+            `Request failed with status: ${response.status}`
+        );
+      }
+
+      // Ensure minimum loading time has passed
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+
+      if ((responseBody as { alreadyExists?: boolean })?.alreadyExists) {
+        toast.info("You're already on the waitlist!");
+      } else {
+        toast.success(
+          (responseBody as { message?: string })?.message ||
+            "Successfully joined the waitlist!"
+        );
+        // Trigger counter refetch when a new user is added
+        onUserAdded?.();
+      }
+      form.reset();
+    } catch (error) {
+      // Ensure minimum loading time has passed even for errors
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
+      
+      if (remainingTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, remainingTime));
+      }
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Form {...form}>
+      <motion.form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="relative flex w-full max-w-md flex-col gap-3 sm:flex-row"
+        initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={{ duration: 2, type: "spring" }}
+      >
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem className="flex-1">
+              <FormControl>
+                <Input
+                  placeholder="Enter your email"
+                  type="email"
+                  autoComplete="email"
+                  className="h-11 rounded-md"
+                  aria-label="Email address for waitlist"
+                  aria-invalid={!!form.formState.errors.email}
+                  {...field}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="h-11 shrink-0 rounded-md px-6 font-medium cursor-pointer"
+          aria-live="polite"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Joining...
+            </>
+          ) : (
+            "Join Waitlist"
+          )}
+        </Button>
+      </motion.form>
+    </Form>
+  );
+}
 
 export default function Home() {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
-  const [notification, setNotification] = useState<{
-    type: 'success' | 'error' | 'info';
-    message: string;
-  } | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const counterRef = useRef<CounterRef>(null);
 
   // Add keyboard shortcut for development login access
   useEffect(() => {
@@ -33,180 +208,44 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isAuthenticated, router]);
 
-  // Auto-hide notification after 5 seconds
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
+  const handleUserAdded = () => {
+    counterRef.current?.refetch();
+  };
 
   return (
-    <div className="min-h-screen bg-background transition-all duration-500 ease-in-out">
-      {/* Header with Login/Register buttons */}
-      <header className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/30 transition-all duration-500 ease-in-out">
-        <div className="container mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
-          <div className="flex items-center space-x-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#162216] transition-all duration-500 ease-in-out">
-              <span className="text-lg font-bold text-[#00B23C]">LP</span>
-            </div>
-            <h1 className="text-xl font-semibold text-foreground transition-colors duration-500 ease-in-out">LogToPost</h1>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col h-screen justify-center items-center text-center px-6">
+      <SmoothCursor />
+      <div className="mb-8">
+        <SplitText className="text-5xl tracking-tighter font-medium mb-4">
+          Turn Your Daily Thoughts Into Great Content
+        </SplitText>
+        <SplitText className="tracking-tight text-xl text-muted-foreground">
+          Transform your raw thoughts into engaging posts that sound authentically like you.
+        </SplitText>
+      </div>
+      <WaitlistForm onUserAdded={handleUserAdded} />
+      <div className="mt-4">
+        <Counter ref={counterRef} />
+      </div>
 
-      {/* Hero Section */}
-      <main className="flex flex-col items-center overflow-hidden transition-all duration-500 ease-in-out">
-        {/* Hero */}
-        <section className="container flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center px-6 text-center">
-          <div className="mx-auto max-w-4xl">
-            <div className="mb-8 inline-flex items-center rounded-full border border-border bg-muted px-3 py-1 text-sm text-muted-foreground transition-all duration-500 ease-in-out">
-              <span className="mr-2">🚀</span>
-              LogToPost is coming soon
-            </div>
-            
-            <h1 className="mb-6 text-4xl font-bold tracking-tight text-foreground sm:text-6xl lg:text-7xl transition-colors duration-500 ease-in-out">
-              Turn your{" "}
-              <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent transition-all duration-500 ease-in-out">
-                daily logs
-              </span>{" "}
-              into scroll-stopping posts
-            </h1>
-            
-            <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground sm:text-xl transition-colors duration-500 ease-in-out">
-              We're building the easiest way to track your ideas and transform them into content worth sharing. Join the waitlist to get early access.
-            </p>
-            
-            {/* Notification */}
-            {notification && (
-              <div className={`
-                mx-auto mb-6 max-w-md rounded-lg border p-4 transition-all duration-500 ease-in-out
-                ${notification.type === 'success' 
-                  ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200' 
-                  : notification.type === 'error'
-                  ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'
-                  : 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200'
-                }
-              `}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      {notification.type === 'success' && (
-                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                      {notification.type === 'error' && (
-                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                      {notification.type === 'info' && (
-                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium">{notification.message}</p>
-                    </div>
-                  </div>
-                  <div className="ml-auto pl-3">
-                    <button
-                      onClick={() => setNotification(null)}
-                      className="inline-flex rounded-md p-1.5 hover:bg-black/5 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:hover:bg-white/5"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Email signup */}
-            <form
-              className="flex flex-col gap-4 sm:flex-row sm:justify-center"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const email = formData.get('email') as string;
-                
-                setIsSubmitting(true);
-                setNotification(null);
-                
-                try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/emails/waitlist`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email }),
-                  });
-                  
-                  const data = await response.json();
-                  
-                  if (response.ok) {
-                    if (data.alreadyExists) {
-                      setNotification({
-                        type: 'info',
-                        message: "You're already on the waitlist! We'll keep you updated."
-                      });
-                    } else {
-                      setNotification({
-                        type: 'success',
-                        message: "Success! You've been added to the waitlist. We'll notify you when LogToPost is ready!"
-                      });
-                    }
-                    (e.target as HTMLFormElement).reset();
-                  } else {
-                    setNotification({
-                      type: 'error',
-                      message: data.error || 'Something went wrong. Please try again.'
-                    });
-                  }
-                } catch (error) {
-                  console.error('Error submitting email:', error);
-                  setNotification({
-                    type: 'error',
-                    message: 'Network error. Please check your connection and try again.'
-                  });
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
-            >
-              <input
-                name="email"
-                type="email"
-                required
-                disabled={isSubmitting}
-                placeholder="you@example.com"
-                className="w-full rounded-md border border-border bg-background px-4 py-2 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary sm:w-80 transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <Button 
-                size="lg" 
-                type="submit" 
-                disabled={isSubmitting}
-                className="text-base cursor-pointer transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? 'Joining...' : 'Join Waitlist'}
-              </Button>
-            </form>
-            
-            <div className="mt-8 text-sm text-muted-foreground transition-colors duration-500 ease-in-out">
-              No spam, just early access updates.
-            </div>
-          </div>
-        </section>
-      </main>
+      <div className="mt-24">
+        <MorphingText className="tracking-tight text-[1.4rem] text-muted-foreground w-[400px]" texts={[
+          "Stop overthinking your posts.",
+          "Stop staring at blank screens.", 
+          "Stop wondering what to say.",
+          "Just share your raw thoughts.",
+          "We'll make them shine.",
+          "Authentic. Engaging. You.",
+          "Content that actually converts."
+        ]} />
+      </div>
+      <footer className="sticky top-[100vh]">
+        <Button size="icon" variant="ghost" className="cursor-pointer">
+          <Link href="https://x.com/logtopost" target="_blank">
+            <FaXTwitter />
+          </Link>
+        </Button>
+      </footer>
     </div>
   );
 }

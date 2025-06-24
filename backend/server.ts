@@ -242,6 +242,24 @@ app.post('/api/emails/waitlist', async (req, res) => {
   }
 });
 
+// Get waitlist count endpoint
+app.get('/api/waitlist/count', async (req, res) => {
+  try {
+    // Count total emails in the waitlist
+    const emailCount = await db.select().from(emails);
+    const count = emailCount.length;
+
+    res.json({
+      count: count,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Waitlist count error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Helper to authenticate and get user ID from token
 const authenticateRequest = (req: Request): string | null => {
   console.log('🔐 Authentication attempt:', {

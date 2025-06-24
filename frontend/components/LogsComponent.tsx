@@ -21,8 +21,40 @@ export default function LogsComponent() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [textSize, setTextSize] = useState<'small' | 'medium' | 'large'>('small');
   
   const { isAuthenticated, user } = useAuth();
+
+  // Get text size class
+  const getTextSizeClass = () => {
+    switch (textSize) {
+      case 'small':
+        return 'text-xs';
+      case 'medium':
+        return 'text-sm';
+      case 'large':
+        return 'text-base';
+      default:
+        return 'text-xs';
+    }
+  };
+
+  // Load text size from localStorage and save changes
+  useEffect(() => {
+    if (isClient) {
+      const savedTextSize = localStorage.getItem('text_size') as 'small' | 'medium' | 'large';
+      if (savedTextSize && ['small', 'medium', 'large'].includes(savedTextSize)) {
+        setTextSize(savedTextSize);
+      }
+    }
+  }, [isClient]);
+
+  const handleTextSizeChange = (size: 'small' | 'medium' | 'large') => {
+    setTextSize(size);
+    if (isClient) {
+      localStorage.setItem('text_size', size);
+    }
+  };
 
   // Load log for the current date
   const loadLog = async (dateToLoad: Date) => {
@@ -218,6 +250,8 @@ export default function LogsComponent() {
         onGeneratePosts={handleSendToAI}
         isGenerateDisabled={!selectedText || aiLoading}
         showGenerateButton={true}
+        textSize={textSize}
+        onTextSizeChange={handleTextSizeChange}
       />
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="px-[50px] lg:px-[300px] pt-[50px] lg:pt-[50px] pb-[100px] lg:pb-[200px]">
@@ -247,9 +281,9 @@ export default function LogsComponent() {
             <div className="relative">
               <textarea
                 ref={textareaRef}
-                className="w-full text-xs bg-background text-foreground
+                className={`w-full ${getTextSizeClass()} bg-background text-foreground
                            placeholder:text-muted-foreground focus:outline-none
-                           resize-none border-none overflow-hidden min-h-[50vh]"
+                           resize-none border-none overflow-hidden min-h-[50vh]`}
                 style={{ height: 'auto', minHeight: '50vh' }}
                 value={text}
                 onChange={e => {
