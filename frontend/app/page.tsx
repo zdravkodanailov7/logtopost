@@ -229,7 +229,7 @@ export default function Home() {
       </div>
 
       <div className="mt-24">
-        <MorphingText className="tracking-tight text-[1.4rem] text-muted-foreground w-[400px]" texts={[
+        <MorphingText className="tracking-tight text-[25px] text-muted-foreground w-[400px]" texts={[
           "Stop overthinking your posts.",
           "Stop staring at blank screens.", 
           "Stop wondering what to say.",
