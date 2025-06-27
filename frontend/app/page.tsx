@@ -22,8 +22,6 @@ import { FaXTwitter } from "react-icons/fa6";
 import { Loader2 } from "lucide-react";
 import SplitText from "@/components/ui/split-text";
 import { Counter, CounterRef } from "@/components/counter";
-import { SmoothCursor } from "@/components/ui/smooth-cursor";
-import { MorphingText } from "@/components/ui/morphing-text";
 
 const formSchema = z.object({
   email: z
@@ -214,7 +212,6 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen justify-center items-center text-center px-6">
-      <SmoothCursor />
       <div className="mb-8">
         <SplitText className="text-5xl tracking-tighter font-medium mb-4">
           Turn Your Daily Thoughts Into Great Content
@@ -227,21 +224,9 @@ export default function Home() {
       <div className="mt-4">
         <Counter ref={counterRef} />
       </div>
-
-      <div className="mt-24">
-        <MorphingText className="tracking-tight text-[25px] text-muted-foreground w-[400px]" texts={[
-          "Stop overthinking your posts.",
-          "Stop staring at blank screens.", 
-          "Stop wondering what to say.",
-          "Just share your raw thoughts.",
-          "We'll make them shine.",
-          "Authentic. Engaging. You.",
-          "Content that actually converts."
-        ]} />
-      </div>
       <footer className="sticky top-[100vh]">
         <Button size="icon" variant="ghost" className="cursor-pointer">
-          <Link href="https://x.com/logtopost" target="_blank">
+          <Link href="https://x.com/zdanailov7" target="_blank">
             <FaXTwitter />
           </Link>
         </Button>
