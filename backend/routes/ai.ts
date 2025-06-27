@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { db } from '../db';
-import { posts, users } from '../schema';
+import { posts, users, postGenerations } from '../schema';
 import { verifyToken } from '../utils/auth';
 import { eq } from 'drizzle-orm';
 
@@ -65,10 +65,14 @@ router.post('/generate-posts', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { logText, dailyLogId } = req.body;
+    const { logText, dailyLogId, selectionStart, selectionEnd } = req.body;
 
     if (!logText) {
       return res.status(400).json({ error: 'Log text is required' });
+    }
+
+    if (selectionStart === undefined || selectionEnd === undefined) {
+      return res.status(400).json({ error: 'Selection positions are required' });
     }
 
     // Fetch user's custom prompt
@@ -159,7 +163,19 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
       }
     }
 
-    // Save generated posts to database with pending status
+    // Create a post generation record to group the generated posts
+    const [postGeneration] = await db
+      .insert(postGenerations)
+      .values({
+        user_id: userId,
+        daily_log_id: dailyLogId,
+        selected_text: logText,
+        selection_start: selectionStart,
+        selection_end: selectionEnd,
+      })
+      .returning();
+
+    // Save generated posts to database linked to the post generation
     const savedPosts = [];
     if (parsedResponse.tweets && Array.isArray(parsedResponse.tweets)) {
       for (const tweetContent of parsedResponse.tweets) {
@@ -169,7 +185,9 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
             user_id: userId,
             content: tweetContent,
             used: false, // New posts start as unused
+            crossed_out: false, // New posts start as not crossed out
             daily_log_id: dailyLogId || null,
+            post_generation_id: postGeneration.id,
           })
           .returning();
         
@@ -180,6 +198,7 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
     res.json({
       tweets: parsedResponse.tweets,
       saved_posts: savedPosts,
+      post_generation: postGeneration,
       message: `Generated and saved ${savedPosts.length} posts`,
       used_custom_prompt: !!user?.custom_prompt
     });
@@ -187,6 +206,86 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
   } catch (error) {
     console.error('AI generation error:', error);
     res.status(500).json({ error: 'Failed to generate posts' });
+  }
+});
+
+// GET /api/ai/post-generations/:dailyLogId - Get all post generations for a log
+router.get('/post-generations/:dailyLogId', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { dailyLogId } = req.params;
+
+    const generations = await db
+      .select()
+      .from(postGenerations)
+      .where(eq(postGenerations.daily_log_id, dailyLogId))
+      .orderBy(postGenerations.created_at);
+
+    res.json({ generations });
+
+  } catch (error) {
+    console.error('Error fetching post generations:', error);
+    res.status(500).json({ error: 'Failed to fetch post generations' });
+  }
+});
+
+// GET /api/ai/posts/:generationId - Get all posts for a specific generation
+router.get('/posts/:generationId', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { generationId } = req.params;
+
+    const generationPosts = await db
+      .select()
+      .from(posts)
+      .where(eq(posts.post_generation_id, generationId))
+      .orderBy(posts.created_at);
+
+    res.json({ posts: generationPosts });
+
+  } catch (error) {
+    console.error('Error fetching posts for generation:', error);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+});
+
+// PATCH /api/ai/posts/:postId/crossed-out - Toggle crossed out status
+router.patch('/posts/:postId/crossed-out', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { postId } = req.params;
+    const { crossed_out } = req.body;
+
+    const [updatedPost] = await db
+      .update(posts)
+      .set({ crossed_out: crossed_out })
+      .where(eq(posts.id, postId))
+      .returning();
+
+    if (!updatedPost) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    res.json({ post: updatedPost });
+
+  } catch (error) {
+    console.error('Error updating post crossed out status:', error);
+    res.status(500).json({ error: 'Failed to update post' });
   }
 });
 

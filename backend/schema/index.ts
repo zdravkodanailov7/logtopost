@@ -33,12 +33,24 @@ export const dailyLogs = pgTable('daily_logs', {
   uniqueUserDate: unique().on(table.user_id, table.log_date),
 }));
 
+export const postGenerations = pgTable('post_generations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  user_id: uuid('user_id').references(() => users.id).notNull(),
+  daily_log_id: uuid('daily_log_id').references(() => dailyLogs.id).notNull(),
+  selected_text: text('selected_text').notNull(), // The original selected text
+  selection_start: integer('selection_start').notNull(), // Character position start
+  selection_end: integer('selection_end').notNull(), // Character position end  
+  created_at: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const posts = pgTable('posts', {
   id: uuid('id').primaryKey().defaultRandom(),
   user_id: uuid('user_id').references(() => users.id).notNull(),
   daily_log_id: uuid('daily_log_id').references(() => dailyLogs.id),
+  post_generation_id: uuid('post_generation_id').references(() => postGenerations.id),
   content: text('content').notNull(),
   used: boolean('used').default(false).notNull(),
+  crossed_out: boolean('crossed_out').default(false).notNull(), // New field for crossed out posts
   created_at: timestamp('created_at').defaultNow().notNull(),
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });

@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Wand2 } from 'lucide-react';
+import { Wand2, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface DateNavProps {
@@ -10,6 +10,7 @@ interface DateNavProps {
     onDateClick?: () => void;
     onGeneratePosts?: () => void;
     isGenerateDisabled?: boolean;
+    isGenerating?: boolean;
     showGenerateButton?: boolean;
     textSize?: 'small' | 'medium' | 'large';
     onTextSizeChange?: (size: 'small' | 'medium' | 'large') => void;
@@ -22,6 +23,7 @@ export function DateNav({
     onDateClick, 
     onGeneratePosts, 
     isGenerateDisabled = false,
+    isGenerating = false,
     showGenerateButton = false,
     textSize = 'small',
     onTextSizeChange
@@ -99,14 +101,23 @@ export function DateNav({
                                     variant="ghost"
                                     size="icon"
                                     onClick={onGeneratePosts}
-                                    disabled={isGenerateDisabled}
+                                    disabled={isGenerateDisabled || isGenerating}
                                     className="ml-2 cursor-pointer"
                                 >
-                                    <Wand2 className="h-4 w-4" />
+                                    {isGenerating ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Wand2 className="h-4 w-4" />
+                                    )}
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p>Generate posts from selected text</p>
+                                <p>
+                                    {isGenerating 
+                                        ? "Generating posts..." 
+                                        : "Generate posts from selected text"
+                                    }
+                                </p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>

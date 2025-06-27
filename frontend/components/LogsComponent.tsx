@@ -8,6 +8,7 @@ import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Wand2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 export default function LogsComponent() {
   const [date, setDate] = useState(new Date());
@@ -22,6 +23,10 @@ export default function LogsComponent() {
   const [selectedText, setSelectedText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [textSize, setTextSize] = useState<'small' | 'medium' | 'large'>('small');
+  const [postGenerations, setPostGenerations] = useState<any[]>([]);
+  const [selectedGeneration, setSelectedGeneration] = useState<any>(null);
+  const [generationPosts, setGenerationPosts] = useState<any[]>([]);
+  const [showPostsDialog, setShowPostsDialog] = useState(false);
   
   const { isAuthenticated, user } = useAuth();
 
@@ -49,10 +54,42 @@ export default function LogsComponent() {
     }
   }, [isClient]);
 
+  // Debug: Log postGenerations when they change
+  useEffect(() => {
+    console.log('PostGenerations updated:', postGenerations);
+    console.log('Text length:', text.length);
+  }, [postGenerations, text]);
+
   const handleTextSizeChange = (size: 'small' | 'medium' | 'large') => {
     setTextSize(size);
     if (isClient) {
       localStorage.setItem('text_size', size);
+    }
+  };
+
+  // Load post generations for the current log
+  const loadPostGenerations = async (logId: string) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/post-generations/${logId}`,
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+      
+      console.log('Loaded post generations:', res.data.generations);
+      setPostGenerations(res.data.generations || []);
+    } catch (err) {
+      console.error('Error loading post generations:', err);
+      setPostGenerations([]);
     }
   };
 
@@ -67,19 +104,27 @@ export default function LogsComponent() {
       const result = await getLogByDate(dateToLoad);
       
       if (result && result.exists && result.log) {
+        console.log('Setting text content:', result.log.content?.length || 0, 'characters');
         setText(result.log.content || '');
         setCurrentLog(result.log);
         setLogExists(true);
+        
+        // Load post generations for this log
+        console.log('Loading post generations for log:', result.log.id);
+        await loadPostGenerations(result.log.id);
+        console.log('Finished loading post generations');
       } else {
         setText('');
         setCurrentLog(null);
         setLogExists(false);
+        setPostGenerations([]);
       }
     } catch (err) {
       console.error('Error loading log:', err);
       setError('Failed to load log. Please try again.');
       setText('');
       setLogExists(false);
+      setPostGenerations([]);
     } finally {
       setLoading(false);
     }
@@ -199,6 +244,10 @@ export default function LogsComponent() {
   // Send selected text to AI endpoint
   const handleSendToAI = async () => {
     if (!selectedText) return;
+    
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
     setAiLoading(true);
     try {
       // Get token from localStorage and add Authorization header
@@ -213,7 +262,9 @@ export default function LogsComponent() {
         `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
         { 
           logText: selectedText,
-          dailyLogId: currentLog?.id 
+          dailyLogId: currentLog?.id,
+          selectionStart: textarea.selectionStart,
+          selectionEnd: textarea.selectionEnd
         },
         { 
           withCredentials: true,
@@ -223,11 +274,79 @@ export default function LogsComponent() {
       const data = res.data;
       console.log('AI generated posts:', data.tweets);
       console.log('Saved posts:', data.saved_posts);
+      console.log('Post generation:', data.post_generation);
+      
+      // Reload post generations to show the new blue dot
+      if (currentLog?.id) {
+        console.log('Reloading post generations for log:', currentLog.id);
+        await loadPostGenerations(currentLog.id);
+      } else {
+        console.log('No currentLog.id available for reloading generations');
+      }
+      
       // You could show a success message here
     } catch (err) {
       console.error('Error sending to AI:', err);
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  // Handle clicking on a blue dot to show posts
+  const handleDotClick = async (generation: any) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/posts/${generation.id}`,
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+      
+      setSelectedGeneration(generation);
+      setGenerationPosts(res.data.posts || []);
+      setShowPostsDialog(true);
+    } catch (err) {
+      console.error('Error loading posts for generation:', err);
+    }
+  };
+
+  // Handle toggling crossed out status
+  const handleToggleCrossedOut = async (postId: string, currentCrossedOut: boolean) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/posts/${postId}/crossed-out`,
+        { crossed_out: !currentCrossedOut },
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+      
+      // Update local state
+      setGenerationPosts(prevPosts => 
+        prevPosts.map(post => 
+          post.id === postId 
+            ? { ...post, crossed_out: !currentCrossedOut }
+            : post
+        )
+      );
+    } catch (err) {
+      console.error('Error toggling crossed out status:', err);
     }
   };
 
@@ -249,6 +368,7 @@ export default function LogsComponent() {
         onDateClick={goToToday} 
         onGeneratePosts={handleSendToAI}
         isGenerateDisabled={!selectedText || aiLoading}
+        isGenerating={aiLoading}
         showGenerateButton={true}
         textSize={textSize}
         onTextSizeChange={handleTextSizeChange}
@@ -278,32 +398,65 @@ export default function LogsComponent() {
             </div>
           ) : logExists ? (
             /* Existing log - show textarea */
-            <div className="relative">
-              <textarea
-                ref={textareaRef}
-                className={`w-full ${getTextSizeClass()} bg-background text-foreground
-                           placeholder:text-muted-foreground focus:outline-none
-                           resize-none border-none overflow-hidden min-h-[50vh]`}
-                style={{ height: 'auto', minHeight: '50vh' }}
-                value={text}
-                onChange={e => {
-                  setText(e.target.value);
-                  // Auto-resize textarea to fit content
-                  e.target.style.height = 'auto';
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                  setSelectedText(''); // Clear selection on change
-                }}
-                onBlur={e => saveLog(e.target.value)}
-                onSelect={handleSelectionChange}
-                placeholder="Write your log for today…"
-                disabled={saving}
-              />
-              {/* Saving indicator */}
-              {saving && (
-                <div className="absolute top-2 right-2 text-xs text-muted-foreground">
-                  Saving...
-                </div>
-              )}
+            <div className="flex">
+              {/* Left sidebar for generation dots */}
+              <div className="w-8 flex-shrink-0 relative">
+              </div>
+              
+              {/* Textarea container */}
+              <div className="flex-1 relative">
+                <textarea
+                  ref={textareaRef}
+                  className={`w-full ${getTextSizeClass()} bg-background text-foreground
+                             placeholder:text-muted-foreground focus:outline-none
+                             resize-none border-none overflow-hidden min-h-[50vh]`}
+                  style={{ height: 'auto', minHeight: '50vh' }}
+                  value={text}
+                  onChange={e => {
+                    setText(e.target.value);
+                    // Auto-resize textarea to fit content
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                    setSelectedText(''); // Clear selection on change
+                  }}
+                  onBlur={e => saveLog(e.target.value)}
+                  onSelect={handleSelectionChange}
+                  placeholder="Write your log for today…"
+                  disabled={saving}
+                />
+                
+                {/* Generation dots */}
+                {text && postGenerations.map((generation, index) => {
+                  // Calculate position based on selection_end
+                  const textBeforeEnd = text.substring(0, generation.selection_end);
+                  const lines = textBeforeEnd.split('\n');
+                  const lineNumber = lines.length - 1;
+                  
+                  // Position dots in the left margin
+                  const lineHeight = getTextSizeClass() === 'text-xs' ? 16 : 
+                                   getTextSizeClass() === 'text-sm' ? 20 : 24;
+                  const top = lineNumber * lineHeight + 5;
+                  
+                  console.log(`Rendering dot ${index + 1} at line ${lineNumber}, top: ${top}px`);
+                  
+                  return (
+                    <div
+                      key={generation.id}
+                      className="absolute w-3 h-3 bg-chart-1/20 hover:bg-chart-1/60 border border-green-500/60 hover:border-green-500 rounded-full cursor-pointer z-10 transition-all duration-400 hover:scale-125"
+                      style={{ top: `${top}px`, left: `-20px` }}
+                      onClick={() => handleDotClick(generation)}
+                      title={`Generated ${new Date(generation.created_at).toLocaleString()}`}
+                    />
+                  );
+                })}
+                
+                {/* Saving indicator */}
+                {saving && (
+                  <div className="absolute top-2 right-2 text-xs text-muted-foreground">
+                    Saving...
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             /* No log exists - show create button */
@@ -317,7 +470,7 @@ export default function LogsComponent() {
                   disabled={saving}
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-md
                            hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-colors"
+                           transition-colors cursor-pointer"
                 >
                   {saving ? 'Creating...' : 'Create Log Entry'}
                 </button>
@@ -326,6 +479,79 @@ export default function LogsComponent() {
           )}
         </div>
       </div>
+
+      {/* Posts Sheet */}
+      <Sheet open={showPostsDialog} onOpenChange={setShowPostsDialog}>
+        <SheetContent className="w-[600px] sm:w-[700px] max-w-[80vw] p-6">
+          <SheetHeader className="pb-6">
+            <SheetTitle>Generated Posts</SheetTitle>
+          </SheetHeader>
+          
+          {selectedGeneration && (
+            <div className="mb-6 p-4 bg-muted rounded-lg">
+              <p className="text-sm text-muted-foreground mb-2">Selected text:</p>
+              <p className="text-sm">{selectedGeneration.selected_text}</p>
+            </div>
+          )}
+
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+            {generationPosts.map((post) => (
+              <div
+                key={post.id}
+                className="p-4 border border-border rounded-lg hover:bg-muted/30 transition-colors"
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  // Create a simple context menu
+                  const menu = document.createElement('div');
+                  menu.className = 'fixed bg-card border border-border rounded-lg shadow-lg z-50 py-1';
+                  menu.style.left = `${e.clientX}px`;
+                  menu.style.top = `${e.clientY}px`;
+                  
+                  const copyButton = document.createElement('button');
+                  copyButton.className = 'w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors cursor-pointer';
+                  copyButton.textContent = 'Copy';
+                  copyButton.onclick = async () => {
+                    try {
+                      await navigator.clipboard.writeText(post.content);
+                      console.log('Copied to clipboard');
+                    } catch (err) {
+                      console.error('Failed to copy:', err);
+                    }
+                    document.body.removeChild(menu);
+                  };
+                  
+                  const crossOutButton = document.createElement('button');
+                  crossOutButton.className = 'w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors cursor-pointer';
+                  crossOutButton.textContent = post.crossed_out ? 'Uncross out' : 'Cross out';
+                  crossOutButton.onclick = () => {
+                    handleToggleCrossedOut(post.id, post.crossed_out);
+                    document.body.removeChild(menu);
+                  };
+                  
+                  menu.appendChild(copyButton);
+                  menu.appendChild(crossOutButton);
+                  document.body.appendChild(menu);
+                  
+                  const closeMenu = () => {
+                    if (document.body.contains(menu)) {
+                      document.body.removeChild(menu);
+                    }
+                    document.removeEventListener('click', closeMenu);
+                  };
+                  
+                  setTimeout(() => {
+                    document.addEventListener('click', closeMenu);
+                  }, 100);
+                }}
+              >
+                <p className={`text-sm ${post.crossed_out ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                  {post.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
