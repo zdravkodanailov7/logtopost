@@ -8,7 +8,7 @@ import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Wand2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { PostsSheet } from './PostsSheet';
 
 export default function LogsComponent() {
   const [date, setDate] = useState(new Date());
@@ -27,6 +27,7 @@ export default function LogsComponent() {
   const [selectedGeneration, setSelectedGeneration] = useState<any>(null);
   const [generationPosts, setGenerationPosts] = useState<any[]>([]);
   const [showPostsDialog, setShowPostsDialog] = useState(false);
+  const [hoveredGeneration, setHoveredGeneration] = useState<string | null>(null);
   
   const { isAuthenticated, user } = useAuth();
 
@@ -152,14 +153,21 @@ export default function LogsComponent() {
     }
   }, [date, isAuthenticated, isClient]);
 
-  // Auto-resize textarea when text changes
+  // Auto-resize textarea when text changes or component mounts
   useEffect(() => {
-    const textarea = document.querySelector('textarea');
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
-    }
-  }, [text]);
+    const resizeTextarea = () => {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+      }
+    };
+
+    // Small delay to ensure the text is rendered and DOM is ready
+    const timer = setTimeout(resizeTextarea, 10);
+    
+    return () => clearTimeout(timer);
+  }, [text, logExists]);
 
   // Create a new log
   const handleCreateLog = async () => {
@@ -318,37 +326,7 @@ export default function LogsComponent() {
     }
   };
 
-  // Handle toggling crossed out status
-  const handleToggleCrossedOut = async (postId: string, currentCrossedOut: boolean) => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/posts/${postId}/crossed-out`,
-        { crossed_out: !currentCrossedOut },
-        { 
-          withCredentials: true,
-          headers: headers
-        }
-      );
-      
-      // Update local state
-      setGenerationPosts(prevPosts => 
-        prevPosts.map(post => 
-          post.id === postId 
-            ? { ...post, crossed_out: !currentCrossedOut }
-            : post
-        )
-      );
-    } catch (err) {
-      console.error('Error toggling crossed out status:', err);
-    }
-  };
 
   // Don't show anything if not authenticated
   if (!isAuthenticated) {
@@ -404,13 +382,52 @@ export default function LogsComponent() {
               </div>
               
               {/* Textarea container */}
-              <div className="flex-1 relative">
+              <div className="flex-1 relative bg-background">
+                {/* Text highlight overlay */}
+                {hoveredGeneration && (
+                  <div 
+                    className={`absolute inset-0 pointer-events-none ${getTextSizeClass()} bg-background text-transparent
+                               resize-none border-none whitespace-pre-wrap break-words`}
+                    style={{ 
+                      height: textareaRef.current?.style.height || 'auto', 
+                      minHeight: '100px',
+                      padding: textareaRef.current ? window.getComputedStyle(textareaRef.current).padding : '0'
+                    }}
+                  >
+                    {(() => {
+                      const generation = postGenerations.find(g => g.id === hoveredGeneration);
+                      if (!generation) return text;
+                      
+                      const beforeText = text.substring(0, generation.selection_start);
+                      const selectedText = text.substring(generation.selection_start, generation.selection_end);
+                      const afterText = text.substring(generation.selection_end);
+                      
+                      return (
+                        <>
+                          {beforeText}
+                          <span className="bg-primary/20 text-red-500 z-10">{selectedText}</span>
+                          {afterText}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+                
                 <textarea
-                  ref={textareaRef}
-                  className={`w-full ${getTextSizeClass()} bg-background text-foreground
+                  ref={(el) => {
+                    textareaRef.current = el;
+                    if (el && text) {
+                      // Immediately resize when textarea mounts with content
+                      setTimeout(() => {
+                        el.style.height = 'auto';
+                        el.style.height = `${el.scrollHeight}px`;
+                      }, 0);
+                    }
+                  }}
+                  className={`w-full ${getTextSizeClass()} bg-transparent text-foreground
                              placeholder:text-muted-foreground focus:outline-none
-                             resize-none border-none overflow-hidden min-h-[50vh]`}
-                  style={{ height: 'auto', minHeight: '50vh' }}
+                             resize-none border-none relative z-10`}
+                  style={{ minHeight: '100px' }}
                   value={text}
                   onChange={e => {
                     setText(e.target.value);
@@ -427,8 +444,9 @@ export default function LogsComponent() {
                 
                 {/* Generation dots */}
                 {text && postGenerations.map((generation, index) => {
-                  // Calculate position based on selection_end
-                  const textBeforeEnd = text.substring(0, generation.selection_end);
+                  // Calculate position based on selection_end, but cap it to actual content
+                  const actualSelectionEnd = Math.min(generation.selection_end, text.trimEnd().length);
+                  const textBeforeEnd = text.substring(0, actualSelectionEnd);
                   const lines = textBeforeEnd.split('\n');
                   const lineNumber = lines.length - 1;
                   
@@ -437,14 +455,16 @@ export default function LogsComponent() {
                                    getTextSizeClass() === 'text-sm' ? 20 : 24;
                   const top = lineNumber * lineHeight + 5;
                   
-                  console.log(`Rendering dot ${index + 1} at line ${lineNumber}, top: ${top}px`);
+                  console.log(`Rendering dot ${index + 1} at line ${lineNumber}, top: ${top}px, selection_end: ${generation.selection_end}, actual_end: ${actualSelectionEnd}`);
                   
                   return (
                     <div
                       key={generation.id}
-                      className="absolute w-3 h-3 bg-chart-1/20 hover:bg-chart-1/60 border border-green-500/60 hover:border-green-500 rounded-full cursor-pointer z-10 transition-all duration-400 hover:scale-125"
-                      style={{ top: `${top}px`, left: `-20px` }}
+                      className="absolute w-4 h-4 bg-chart-1/20 hover:bg-chart-1/60 border border-green-500/60 hover:border-green-500 rounded-full cursor-pointer z-10 transition-all duration-400 hover:scale-125"
+                      style={{ top: `${top}px`, left: `-22px` }}
                       onClick={() => handleDotClick(generation)}
+                      onMouseEnter={() => setHoveredGeneration(generation.id)}
+                      onMouseLeave={() => setHoveredGeneration(null)}
                       title={`Generated ${new Date(generation.created_at).toLocaleString()}`}
                     />
                   );
@@ -481,77 +501,13 @@ export default function LogsComponent() {
       </div>
 
       {/* Posts Sheet */}
-      <Sheet open={showPostsDialog} onOpenChange={setShowPostsDialog}>
-        <SheetContent className="w-[600px] sm:w-[700px] max-w-[80vw] p-6">
-          <SheetHeader className="pb-6">
-            <SheetTitle>Generated Posts</SheetTitle>
-          </SheetHeader>
-          
-          {selectedGeneration && (
-            <div className="mb-6 p-4 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground mb-2">Selected text:</p>
-              <p className="text-sm">{selectedGeneration.selected_text}</p>
-            </div>
-          )}
-
-          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-            {generationPosts.map((post) => (
-              <div
-                key={post.id}
-                className="p-4 border border-border rounded-lg hover:bg-muted/30 transition-colors"
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  // Create a simple context menu
-                  const menu = document.createElement('div');
-                  menu.className = 'fixed bg-card border border-border rounded-lg shadow-lg z-50 py-1';
-                  menu.style.left = `${e.clientX}px`;
-                  menu.style.top = `${e.clientY}px`;
-                  
-                  const copyButton = document.createElement('button');
-                  copyButton.className = 'w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors cursor-pointer';
-                  copyButton.textContent = 'Copy';
-                  copyButton.onclick = async () => {
-                    try {
-                      await navigator.clipboard.writeText(post.content);
-                      console.log('Copied to clipboard');
-                    } catch (err) {
-                      console.error('Failed to copy:', err);
-                    }
-                    document.body.removeChild(menu);
-                  };
-                  
-                  const crossOutButton = document.createElement('button');
-                  crossOutButton.className = 'w-full px-4 py-2 text-sm text-left hover:bg-muted transition-colors cursor-pointer';
-                  crossOutButton.textContent = post.crossed_out ? 'Uncross out' : 'Cross out';
-                  crossOutButton.onclick = () => {
-                    handleToggleCrossedOut(post.id, post.crossed_out);
-                    document.body.removeChild(menu);
-                  };
-                  
-                  menu.appendChild(copyButton);
-                  menu.appendChild(crossOutButton);
-                  document.body.appendChild(menu);
-                  
-                  const closeMenu = () => {
-                    if (document.body.contains(menu)) {
-                      document.body.removeChild(menu);
-                    }
-                    document.removeEventListener('click', closeMenu);
-                  };
-                  
-                  setTimeout(() => {
-                    document.addEventListener('click', closeMenu);
-                  }, 100);
-                }}
-              >
-                <p className={`text-sm ${post.crossed_out ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                  {post.content}
-                </p>
-              </div>
-            ))}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <PostsSheet 
+        isOpen={showPostsDialog}
+        onOpenChange={setShowPostsDialog}
+        selectedGeneration={selectedGeneration}
+        generationPosts={generationPosts}
+        setGenerationPosts={setGenerationPosts}
+      />
     </div>
   );
 }

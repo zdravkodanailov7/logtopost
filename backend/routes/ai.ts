@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { db } from '../db';
 import { posts, users, postGenerations } from '../schema';
-import { verifyToken } from '../utils/auth';
+import { authenticateRequest, verifyToken } from '../utils/auth';
 import { eq } from 'drizzle-orm';
 
 dotenv.config();
@@ -33,28 +33,7 @@ Rules:
 - Avoid soft or sentimental takes
 - Keep it real, not corny`;
 
-// Authentication helper for this router
-const authenticateRequest = (req: Request): string | null => {
-  let token: string | null = null;
 
-  // Check Authorization header first
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
-  }
-
-  // If no token in header, check cookies
-  if (!token && req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
-
-  if (!token) {
-    return null;
-  }
-
-  const decoded = verifyToken(token);
-  return decoded ? decoded.userId : null;
-};
 
 // POST /api/ai/generate-posts
 router.post('/generate-posts', async (req: Request, res: Response) => {
@@ -185,7 +164,6 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
             user_id: userId,
             content: tweetContent,
             used: false, // New posts start as unused
-            crossed_out: false, // New posts start as not crossed out
             daily_log_id: dailyLogId || null,
             post_generation_id: postGeneration.id,
           })
@@ -256,36 +234,6 @@ router.get('/posts/:generationId', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching posts for generation:', error);
     res.status(500).json({ error: 'Failed to fetch posts' });
-  }
-});
-
-// PATCH /api/ai/posts/:postId/crossed-out - Toggle crossed out status
-router.patch('/posts/:postId/crossed-out', async (req: Request, res: Response) => {
-  try {
-    const userId = authenticateRequest(req);
-    
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const { postId } = req.params;
-    const { crossed_out } = req.body;
-
-    const [updatedPost] = await db
-      .update(posts)
-      .set({ crossed_out: crossed_out })
-      .where(eq(posts.id, postId))
-      .returning();
-
-    if (!updatedPost) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-
-    res.json({ post: updatedPost });
-
-  } catch (error) {
-    console.error('Error updating post crossed out status:', error);
-    res.status(500).json({ error: 'Failed to update post' });
   }
 });
 

@@ -52,7 +52,7 @@ export default function SplitText({
         },
         {
           type: "spring",
-          duration: 2,
+          duration: 1,
           bounce: 0,
           delay: stagger(0.05),
         }
