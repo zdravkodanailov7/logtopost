@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { db } from '../db';
 import { posts, users, postGenerations } from '../schema';
 import { authenticateRequest, verifyToken } from '../utils/auth';
+import { checkGenerationLimit, PLAN_LIMITS } from '../middleware/checkUsage';
 import { eq } from 'drizzle-orm';
 
 dotenv.config();
@@ -36,13 +37,16 @@ Rules:
 
 
 // POST /api/ai/generate-posts
-router.post('/generate-posts', async (req: Request, res: Response) => {
+router.post('/generate-posts', checkGenerationLimit, async (req: Request, res: Response) => {
   try {
     const userId = authenticateRequest(req);
     
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
+
+    // Get user from middleware (it's attached to req.user)
+    const user = (req as any).user;
 
     const { logText, dailyLogId, selectionStart, selectionEnd } = req.body;
 
@@ -53,13 +57,6 @@ router.post('/generate-posts', async (req: Request, res: Response) => {
     if (selectionStart === undefined || selectionEnd === undefined) {
       return res.status(400).json({ error: 'Selection positions are required' });
     }
-
-    // Fetch user's custom prompt
-    const [user] = await db
-      .select({ custom_prompt: users.custom_prompt })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
 
     // Use custom prompt if available, otherwise use default
     const basePrompt = user?.custom_prompt || DEFAULT_PROMPT;
@@ -173,12 +170,46 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
       }
     }
 
+    // After successful generation, increment usage
+    if (user.subscription_status === 'trial') {
+      await db
+        .update(users)
+        .set({ 
+          trial_generations_used: user.trial_generations_used + 1,
+          updated_at: new Date()
+        })
+        .where(eq(users.id, userId));
+    } else {
+      await db
+        .update(users)
+        .set({ 
+          generations_used_this_month: user.generations_used_this_month + 1,
+          updated_at: new Date()
+        })
+        .where(eq(users.id, userId));
+    }
+
+    // Calculate current usage for response
+    const currentUsage = user.subscription_status === 'trial' 
+      ? user.trial_generations_used + 1 
+      : user.generations_used_this_month + 1;
+
+    const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
+
     res.json({
       tweets: parsedResponse.tweets,
       saved_posts: savedPosts,
       post_generation: postGeneration,
       message: `Generated and saved ${savedPosts.length} posts`,
-      used_custom_prompt: !!user?.custom_prompt
+      used_custom_prompt: !!user?.custom_prompt,
+      // Include usage info in response
+      usage: {
+        used: currentUsage,
+        limit: limit,
+        plan: user.plan_type,
+        subscription_status: user.subscription_status,
+        remaining: limit - currentUsage
+      }
     });
 
   } catch (error) {

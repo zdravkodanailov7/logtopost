@@ -11,6 +11,7 @@ import emailsRoutes from './routes/emails';
 import waitlistRoutes from './routes/waitlist';
 import userRoutes from './routes/user';
 import aiRoutes from './routes/ai';
+import billingRoutes from './routes/billing';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use('/api/emails', emailsRoutes);
 app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/billing', billingRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

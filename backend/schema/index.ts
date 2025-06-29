@@ -1,5 +1,6 @@
 // backend/schema/index.ts
 import { pgTable, uuid, timestamp, varchar, text, date, integer, unique, pgEnum, boolean } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // Define the post status enum
 export const postStatusEnum = pgEnum('post_status', ['pending', 'approved', 'rejected']);
@@ -9,6 +10,21 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: text('password').notNull(),
   custom_prompt: text('custom_prompt'), // For user's custom AI prompt
+  
+  // Stripe & Subscription fields
+  stripe_customer_id: varchar('stripe_customer_id', { length: 255 }),
+  stripe_subscription_id: varchar('stripe_subscription_id', { length: 255 }),
+  subscription_status: varchar('subscription_status', { length: 50 }).default('trial'), // trial, active, canceled, past_due
+  plan_type: varchar('plan_type', { length: 50 }).default('trial'), // trial, basic, pro, advanced
+  
+  // Usage tracking
+  generations_used_this_month: integer('generations_used_this_month').default(0).notNull(),
+  trial_generations_used: integer('trial_generations_used').default(0).notNull(),
+  
+  // Trial tracking
+  trial_ends_at: timestamp('trial_ends_at').default(sql`NOW() + INTERVAL '7 days'`),
+  subscription_ends_at: timestamp('subscription_ends_at'),
+  
   created_at: timestamp('created_at').defaultNow().notNull(),
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });
