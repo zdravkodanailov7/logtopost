@@ -25,6 +25,7 @@ import {
     Moon,
     Sun,
     MessageSquare,
+    CreditCard,
 } from 'lucide-react';
 import {
     Sidebar,
@@ -41,6 +42,7 @@ import Link from "next/link";
 import LogsComponent from '@/components/LogsComponent';
 import PostsComponent from '@/components/PostsComponent';
 import { ProfileComponent } from '@/components/ProfileComponent';
+import { BillingComponent } from '@/components/BillingComponent';
 import UserDropdown from '@/components/UserDropdown';
 
 export default function DashboardPage() {
@@ -49,6 +51,20 @@ export default function DashboardPage() {
     const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
     const [activeSidebarItem, setActiveSidebarItem] = useState('logs');
     const { theme, setTheme } = useTheme();
+
+    // Load saved sidebar item from localStorage on component mount
+    useEffect(() => {
+        const savedSidebarItem = localStorage.getItem('activeSidebarItem');
+        if (savedSidebarItem && ['logs', 'posts', 'billing', 'profile'].includes(savedSidebarItem)) {
+            setActiveSidebarItem(savedSidebarItem);
+        }
+    }, []);
+
+    // Save sidebar item to localStorage whenever it changes
+    const handleSidebarItemChange = (item: string) => {
+        setActiveSidebarItem(item);
+        localStorage.setItem('activeSidebarItem', item);
+    };
 
     // Redirect to login if not authenticated
     useEffect(() => {
@@ -113,6 +129,11 @@ export default function DashboardPage() {
             icon: MessageSquare,
         },
         {
+            title: "Billing",
+            key: "billing",
+            icon: CreditCard,
+        },
+        {
             title: "Profile",
             key: "profile",
             icon: Settings,
@@ -144,7 +165,7 @@ export default function DashboardPage() {
                                             ? 'bg-accent text-accent-foreground' 
                                             : 'hover:text-foreground hover:bg-transparent'
                                     }`}
-                                    onClick={() => setActiveSidebarItem(item.key)}
+                                    onClick={() => handleSidebarItemChange(item.key)}
                                 >
                                     <item.icon />
                                     <span>{item.title}</span>
@@ -162,6 +183,9 @@ export default function DashboardPage() {
                     )}
                     {activeSidebarItem === 'posts' && (
                         <PostsComponent />
+                    )}
+                    {activeSidebarItem === 'billing' && (
+                        <BillingComponent />
                     )}
                     {activeSidebarItem === 'profile' && (
                         <ProfileComponent />

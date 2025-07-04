@@ -22,6 +22,8 @@ import { FaXTwitter } from "react-icons/fa6";
 import { Loader2, Check } from "lucide-react";
 import SplitText from "@/components/ui/split-text";
 import { Counter, CounterRef } from "@/components/counter";
+import GradientText from "@/components/ui/gradient-text";
+import { PLAN_OPTIONS } from "@/lib/plans";
 
 // Environment variable to control app mode
 const APP_MODE = process.env.NEXT_PUBLIC_APP_MODE || 'waitlist'; // 'waitlist' or 'live'
@@ -187,57 +189,134 @@ function WaitlistForm({ onUserAdded }: { onUserAdded?: () => void }) {
   );
 }
 
+function ProcessSection() {
+  return (
+    <motion.div
+      className="w-full max-w-4xl mx-auto mb-16"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8, delay: 0.1 }}
+    >
+      <h2 className="text-2xl font-semibold text-center mb-8">How It Works</h2>
+      <div className="grid md:grid-cols-2 gap-8 items-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl font-semibold">1</span>
+          </div>
+          <h3 className="text-lg font-medium mb-2">Write logs on absolutely anything</h3>
+          <p className="text-muted-foreground">Capture your thoughts, experiences, and ideas in your own words</p>
+        </div>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl font-semibold">2</span>
+          </div>
+          <h3 className="text-lg font-medium mb-2">Convert them to X posts</h3>
+          <p className="text-muted-foreground">Transform your raw thoughts into engaging posts that sound like you</p>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function ProblemSolutionSection() {
+  return (
+    <motion.div
+      className="w-full max-w-5xl mx-auto mb-16"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8, delay: 0.15 }}
+    >
+      <div className="grid md:grid-cols-2 gap-12 items-center">
+        {/* Without App - Problems */}
+        <div className="text-center md:text-right">
+          <h3 className="text-xl font-semibold mb-6 text-destructive">Without LogToPost</h3>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 md:justify-end">
+              <span className="text-muted-foreground">Spending hours constructing the perfect tweet</span>
+              <span className="text-destructive font-bold">×</span>
+            </div>
+            <div className="flex items-center gap-3 md:justify-end">
+              <span className="text-muted-foreground">Staring at a blank compose window</span>
+              <span className="text-destructive font-bold">×</span>
+            </div>
+            <div className="flex items-center gap-3 md:justify-end">
+              <span className="text-muted-foreground">Overthinking what to write and if you should post</span>
+              <span className="text-destructive font-bold">×</span>
+            </div>
+            <div className="flex items-center gap-3 md:justify-end">
+              <span className="text-muted-foreground">Inconsistent posting due to writer's block</span>
+              <span className="text-destructive font-bold">×</span>
+            </div>
+          </div>
+        </div>
+
+        {/* With App - Solutions */}
+        <div className="text-center md:text-left">
+          <h3 className="text-xl font-semibold mb-6 text-primary">With LogToPost</h3>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="text-primary font-bold">✓</span>
+              <span className="text-muted-foreground">Simply review and approve generated posts</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-primary font-bold">✓</span>
+              <span className="text-muted-foreground">No more blank page syndrome</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-primary font-bold">✓</span>
+              <span className="text-muted-foreground">Just click post or skip - that's it</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-primary font-bold">✓</span>
+              <span className="text-muted-foreground">Consistent content that sounds like you</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+             <div className="text-center mt-8 p-6 bg-muted/30 rounded-xl">
+         <GradientText className="text-xl font-medium">
+           Stop overthinking. Start posting.
+         </GradientText>
+       </div>
+    </motion.div>
+  );
+}
+
 function PricingSection() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, createCheckoutSession } = useAuth();
   const router = useRouter();
 
-  const plans = [
-    {
-      name: "Basic",
-      price: "£7.99",
-      generations: 50,
-      features: [
-        "50 post generations per month",
-        "All core features",
-        "Email support"
-      ]
-    },
-    {
-      name: "Pro",
-      price: "£14.99",
-      generations: 150,
-      features: [
-        "150 post generations per month",
-        "Priority support", 
-        "Custom AI prompts",
-        "Advanced analytics"
-      ],
-      popular: true
-    },
-    {
-      name: "Advanced",
-      price: "£24.99",
-      generations: 500,
-      features: [
-        "500 post generations per month",
-        "Priority support",
-        "Custom AI prompts", 
-        "Advanced analytics",
-        "Early access to new features"
-      ]
-    }
-  ];
+  const plans = Object.values(PLAN_OPTIONS).map(plan => ({
+    name: plan.name,
+    price: `${plan.currency}${plan.price}`,
+    generations: plan.generations,
+    features: plan.features.map(feature => feature.replace('generations/month', 'post generations per month')),
+    popular: plan.popular
+  }));
 
-  const handleGetStarted = () => {
+  const handleGetStarted = async (planType: string) => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      // Create checkout session
+      try {
+        const checkoutUrl = await createCheckoutSession(planType);
+        window.location.href = checkoutUrl;
+      } catch (error) {
+        console.error('Checkout error:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
+      }
     } else {
+      // Store the selected plan and redirect to register
+      localStorage.setItem('selectedPlan', planType);
       router.push('/register');
     }
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto">
+      <ProcessSection />
+      <ProblemSolutionSection />
+      
       <motion.div
         className="grid md:grid-cols-3 gap-6"
         initial={{ opacity: 0, y: 20 }}
@@ -285,14 +364,14 @@ function PricingSection() {
             </ul>
 
             <Button 
-              onClick={handleGetStarted}
-              className={`w-full ${
+              onClick={() => handleGetStarted(plan.name.toLowerCase())}
+              className={`w-full cursor-pointer ${
                 plan.popular 
                   ? 'bg-primary hover:bg-primary/90' 
                   : 'bg-secondary hover:bg-secondary/80'
               }`}
             >
-              Get Started
+              Start 7 Day Free Trial
             </Button>
           </motion.div>
         ))}
@@ -304,8 +383,8 @@ function PricingSection() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.6 }}
       >
-        <p className="text-sm text-muted-foreground mb-4">
-          🆓 Start with a 7-day free trial • 10 generations included
+        <p className="text-xs text-muted-foreground">
+          Start with a 7-day free trial • 10 generations included
         </p>
         <p className="text-xs text-muted-foreground">
           All plans include access to our AI-powered content generation engine
@@ -342,36 +421,49 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen justify-center items-center text-center px-6 py-12">
-      <div className="mb-8">
-        <SplitText className="text-5xl tracking-tighter font-medium mb-4">
-          Turn Your Daily Thoughts Into Great Content
-        </SplitText>
-        <SplitText className="tracking-tight text-xl text-muted-foreground">
-          Transform your raw thoughts into engaging posts that sound authentically like you.
-        </SplitText>
-      </div>
-
-      {APP_MODE === 'waitlist' ? (
-        // Waitlist Mode - Email Collection
-        <>
-          <WaitlistForm onUserAdded={handleUserAdded} />
-          <div className="mt-4">
-            <Counter ref={counterRef} />
+    <>
+      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="font-semibold text-lg">
+            Log to Post
           </div>
-        </>
-      ) : (
-        // Live Mode - Pricing Plans
-        <PricingSection />
-      )}
+          <Button variant="ghost" onClick={() => router.push('/login')} className="cursor-pointer">
+            Log In
+          </Button>
+        </div>
+      </nav>
+      
+      <div className="flex flex-col min-h-screen justify-center items-center text-center px-6 py-12">
+        <div className="mb-8">
+          <SplitText className="text-5xl tracking-tighter font-medium mb-4">
+            Turn Your Daily Thoughts Into Great Content
+          </SplitText>
+          <SplitText className="tracking-tight text-xl text-muted-foreground">
+            Transform your raw thoughts into engaging posts that sound authentically like you.
+          </SplitText>
+        </div>
 
-      <footer className="sticky top-[100vh]">
+        {APP_MODE === 'waitlist' ? (
+          // Waitlist Mode - Email Collection
+          <>
+            <WaitlistForm onUserAdded={handleUserAdded} />
+            <div className="mt-4">
+              <Counter ref={counterRef} />
+            </div>
+          </>
+        ) : (
+          // Live Mode - Pricing Plans
+          <PricingSection />
+        )}
+      </div>
+      
+      <footer className="w-full py-8 text-center">
         <Button size="icon" variant="ghost" className="cursor-pointer">
           <Link href="https://x.com/zdanailov7" target="_blank">
             <FaXTwitter />
           </Link>
         </Button>
       </footer>
-    </div>
+    </>
   );
 }

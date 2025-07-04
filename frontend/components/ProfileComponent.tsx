@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { getUserProfile, updateUserProfile, UserProfile } from '@/lib/profile';
+import { getUserProfile, updateUserProfile, deleteAccount, UserProfile } from '@/lib/profile';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from "sonner";
+import { ConfirmationDialog } from './ui/confirmation-dialog';
 
 // Default prompt from the backend
 const DEFAULT_PROMPT = `You are Zdravko, a 20-year-old dev building SaaS apps, with a dark sense of humour and a blunt, no-bullshit tone.
@@ -29,7 +30,9 @@ export function ProfileComponent() {
   const [customPrompt, setCustomPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { isAuthenticated, canEditPrompt, logout } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -71,6 +74,24 @@ export function ProfileComponent() {
     setCustomPrompt(DEFAULT_PROMPT);
   };
 
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteAccount();
+      toast.success('Account deleted successfully');
+      // Clear local storage and redirect to home
+      localStorage.removeItem('auth_token');
+      logout();
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      toast.error('Failed to delete account');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
   // Don't show anything if not authenticated
   if (!isAuthenticated) {
     return (
@@ -107,18 +128,49 @@ export function ProfileComponent() {
         <label className="block font-semibold mb-2 text-foreground">
           Prompt
         </label>
-                <textarea
-          value={customPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder="Enter your AI prompt here..."
-          maxLength={2000}
-          className="w-full h-[500px] p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-ring"
-          style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace' }}
-        />
+        <div className="relative">
+          <textarea
+            value={customPrompt}
+            onChange={(e) => canEditPrompt && setCustomPrompt(e.target.value)}
+            placeholder="Enter your AI prompt here..."
+            maxLength={2000}
+            className={`w-full h-[500px] p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-ring ${
+              !canEditPrompt ? 'blur-sm pointer-events-none' : ''
+            }`}
+            style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace' }}
+          />
+          
+          {/* Overlay for non-pro users */}
+          {!canEditPrompt && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
+              <div className="text-center p-8 max-w-md">
+                <div className="mb-4">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
+                    <span className="text-2xl">🔒</span>
+                  </div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">
+                    Unlock Custom AI Prompts
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Upgrade to Pro to edit custom prompts and customize how the AI generates posts from your logs with your own voice and style.
+                  </p>
+                </div>
+                
+                <Button
+                  className="cursor-pointer"
+                  onClick={() => window.location.href = '/#pricing'}
+                >
+                  Upgrade to Pro
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+        
         <div className="flex items-center justify-between mt-2">
-            <p className={`text-xs ${customPrompt.length > 1800 ? 'text-yellow-500' : customPrompt.length === 2000 ? 'text-red-500' : 'text-muted-foreground'}`}>
-              {customPrompt.length} / 2000 characters
-            </p>
+          <p className={`text-xs ${customPrompt.length > 1800 ? 'text-yellow-500' : customPrompt.length === 2000 ? 'text-red-500' : 'text-muted-foreground'}`}>
+            {customPrompt.length} / 2000 characters
+          </p>
         </div>
       </div>
 
@@ -126,21 +178,51 @@ export function ProfileComponent() {
       <div className="flex gap-3">
         <Button
           onClick={saveProfile}
-          disabled={isSaving}
-          className="flex-1 cursor-pointer"
+          disabled={isSaving || !canEditPrompt}
+          className={`flex-1 ${canEditPrompt ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
         >
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {isSaving ? 'Saving...' : canEditPrompt ? 'Save Changes' : 'Save Changes (Pro Required)'}
         </Button>
         
         <Button
           variant="outline"
           onClick={resetToDefault}
-          disabled={isSaving}
-          className="cursor-pointer"
+          disabled={isSaving || !canEditPrompt}
+          className={`${canEditPrompt ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
         >
           Reset to Default
         </Button>
       </div>
+
+      {/* Delete Account Section */}
+      <div className="mt-12 pt-6 border-t border-destructive/20">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-destructive mb-2">Danger Zone</h2>
+          <p className="text-sm text-muted-foreground">
+            Once you delete your account, there is no going back. This will permanently delete your account, 
+            all your logs, posts, and cancel any active subscriptions.
+          </p>
+        </div>
+
+        <Button
+          variant="destructive"
+          onClick={() => setShowDeleteDialog(true)}
+          className="cursor-pointer"
+        >
+          Delete Account
+        </Button>
+      </div>
+
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Account"
+        message="Are you sure you want to delete your account? This will permanently delete all your data, logs, posts, and cancel any active subscriptions. This action cannot be undone."
+        confirmText="Delete Account"
+        confirmVariant="destructive"
+        isLoading={isDeleting}
+      />
     </div>
   );
 } 

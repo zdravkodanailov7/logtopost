@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { users } from '../schema';
+import { users, posts, postGenerations, dailyLogs } from '../schema';
 import { verifyToken } from '../utils/auth';
 
 const router = express.Router();
@@ -152,6 +152,110 @@ router.get('/usage', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Usage fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch usage' });
+  }
+});
+
+// Delete user account and all related data
+router.delete('/account', async (req: Request, res: Response) => {
+  try {
+    const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const userId = decoded.userId;
+
+    // First, get user data to check for Stripe subscription
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        stripe_customer_id: users.stripe_customer_id,
+        stripe_subscription_id: users.stripe_subscription_id,
+        subscription_status: users.subscription_status
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Cancel Stripe subscription and delete customer if exists
+    if (user.stripe_customer_id || user.stripe_subscription_id) {
+      try {
+        // Import stripe here to avoid dependency issues if not configured
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        
+        // Cancel subscription first if it exists and is active
+        if (user.stripe_subscription_id && user.subscription_status === 'active') {
+          await stripe.subscriptions.cancel(user.stripe_subscription_id);
+          console.log(`✅ Cancelled Stripe subscription: ${user.stripe_subscription_id}`);
+        }
+        
+        // Delete the entire Stripe customer (this also deletes all associated data)
+        if (user.stripe_customer_id) {
+          await stripe.customers.del(user.stripe_customer_id);
+          console.log(`✅ Deleted Stripe customer: ${user.stripe_customer_id}`);
+        }
+        
+      } catch (stripeError) {
+        console.error('❌ Error cleaning up Stripe data:', stripeError);
+        // Continue with deletion even if Stripe cleanup fails
+      }
+    }
+
+    // Delete all related data in the correct order
+    // 1. Delete posts
+    const deletedPosts = await db
+      .delete(posts)
+      .where(eq(posts.user_id, userId))
+      .returning({ id: posts.id });
+
+    // 2. Delete post generations
+    const deletedGenerations = await db
+      .delete(postGenerations)
+      .where(eq(postGenerations.user_id, userId))
+      .returning({ id: postGenerations.id });
+
+    // 3. Delete daily logs
+    const deletedLogs = await db
+      .delete(dailyLogs)
+      .where(eq(dailyLogs.user_id, userId))
+      .returning({ id: dailyLogs.id });
+
+    // 4. Finally delete the user
+    const deletedUser = await db
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id, email: users.email });
+
+    console.log(`Account deletion completed for user ${user.email}:`, {
+      posts: deletedPosts.length,
+      generations: deletedGenerations.length,
+      logs: deletedLogs.length,
+      user: deletedUser.length
+    });
+
+    res.json({ 
+      message: 'Account deleted successfully',
+      deleted: {
+        posts: deletedPosts.length,
+        generations: deletedGenerations.length,
+        logs: deletedLogs.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
   }
 });
 

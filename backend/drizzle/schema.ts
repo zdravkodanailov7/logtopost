@@ -1,4 +1,4 @@
-import { pgTable, foreignKey, uuid, text, varchar, timestamp, unique, date, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, foreignKey, uuid, text, varchar, timestamp, unique, date, pgEnum, integer } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const postStatusEnum = pgEnum('post_status', ['pending', 'approved', 'rejected']);
@@ -50,6 +50,14 @@ export const users = pgTable("users", {
 	createdAt: timestamp("created_at", { mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { mode: 'string' }).defaultNow().notNull(),
 	customPrompt: text("custom_prompt"),
+	stripe_customer_id: varchar("stripe_customer_id", { length: 255 }),
+	stripe_subscription_id: varchar("stripe_subscription_id", { length: 255 }),
+	subscription_status: varchar("subscription_status", { length: 50 }).default('trial'),
+	plan_type: varchar("plan_type", { length: 50 }).default('trial'),
+	generations_used_this_month: integer("generations_used_this_month").default(0).notNull(),
+	trial_generations_used: integer("trial_generations_used").default(0).notNull(),
+	trial_ends_at: timestamp("trial_ends_at").default(sql`NOW() + INTERVAL '7 days'`),
+	subscription_ends_at: timestamp("subscription_ends_at"),
 }, (table) => [
 	unique("users_email_unique").on(table.email),
 ]);

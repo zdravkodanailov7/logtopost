@@ -56,4 +56,14 @@ export const updateUserProfile = async (profileData: UpdateProfileRequest): Prom
     console.error('Error updating profile:', error);
     throw error;
   }
+};
+
+// Delete user account and all related data
+export const deleteAccount = async (): Promise<void> => {
+  try {
+    await api.delete('/api/user/account');
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    throw error;
+  }
 }; 

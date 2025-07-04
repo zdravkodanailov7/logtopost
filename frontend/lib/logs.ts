@@ -12,8 +12,9 @@ export interface DailyLog {
 }
 
 export interface LogResponse {
-  log: DailyLog;
+  log: DailyLog | null;
   exists: boolean;
+  message?: string;
 }
 
 export interface CreateLogResponse {
@@ -61,11 +62,12 @@ export const getLogByDate = async (date: Date): Promise<LogResponse | null> => {
     const formattedDate = formatDate(date);
     const response = await api.get(`/api/logs/${formattedDate}`);
     
-    return { log: response.data.log, exists: true };
+    // API now returns { exists: boolean, log: DailyLog | null }
+    return {
+      log: response.data.log,
+      exists: response.data.exists
+    };
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 404) {
-      return { log: null as any, exists: false };
-    }
     console.error('Error fetching log:', error);
     throw error;
   }

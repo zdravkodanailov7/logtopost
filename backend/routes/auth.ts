@@ -43,6 +43,8 @@ router.post('/register', async (req: Request, res: Response) => {
     const [newUser] = await db.insert(users).values({
       email: email.toLowerCase(),
       password: hashedPassword,
+      subscription_status: 'trial',  // Explicitly set trial status
+      plan_type: 'trial',           // Explicitly set trial plan
     }).returning({ id: users.id, email: users.email, created_at: users.created_at });
 
     // Generate JWT token
@@ -139,12 +141,16 @@ router.get('/me', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    // Get user from database
+    // Get user from database with subscription information
     const [user] = await db.select({
       id: users.id,
       email: users.email,
       created_at: users.created_at,
-      updated_at: users.updated_at
+      updated_at: users.updated_at,
+      subscription_status: users.subscription_status,
+      plan_type: users.plan_type,
+      trial_ends_at: users.trial_ends_at,
+      subscription_ends_at: users.subscription_ends_at
     }).from(users).where(eq(users.id, decoded.userId));
 
     if (!user) {

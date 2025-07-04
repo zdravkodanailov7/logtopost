@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, loginUser, registerUser, getCurrentUser, saveToken, saveUser, getToken, getStoredUser, logout } from '@/lib/auth';
+import axios from 'axios';
 
 interface AuthContextType {
   user: User | null;
@@ -10,6 +11,8 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  createCheckoutSession: (plan: string) => Promise<string>;
+  canEditPrompt: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -92,6 +95,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
   };
 
+  const createCheckoutSession = async (plan: string): Promise<string> => {
+    const token = localStorage.getItem('auth_token');
+    const headers: any = { 'Content-Type': 'application/json' };
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/create-checkout-session`,
+        { plan },
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+
+      return response.data.url;
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      throw new Error(error.response?.data?.error || 'Failed to create checkout session');
+    }
+  };
+
+  // Check if user can edit custom prompt (Pro or Advanced with active subscription)
+  const canEditPrompt = !!(user && 
+    user.subscription_status === 'active' && 
+    ['pro', 'advanced'].includes(user.plan_type || ''));
+
   const value: AuthContextType = {
     user,
     loading,
@@ -99,6 +132,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register: handleRegister,
     logout: handleLogout,
     isAuthenticated: !!user,
+    createCheckoutSession,
+    canEditPrompt,
   };
 
   return (

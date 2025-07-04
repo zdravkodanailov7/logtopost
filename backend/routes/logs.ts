@@ -37,10 +37,18 @@ router.get('/:date', async (req: Request, res: Response) => {
       .where(and(eq(dailyLogs.user_id, userId), eq(dailyLogs.log_date, date)));
 
     if (!log) {
-      return res.status(404).json({ error: 'Log not found for this date', exists: false });
+      return res.status(200).json({ 
+        exists: false, 
+        log: null,
+        message: 'No log found for this date'
+      });
     }
 
-    res.json({ log, exists: true });
+    res.status(200).json({ 
+      exists: true, 
+      log,
+      message: 'Log found successfully'
+    });
 
   } catch (error) {
     console.error('Get log error:', error);

@@ -4,6 +4,10 @@ export interface User {
   id: string;
   email: string;
   created_at: string;
+  subscription_status?: string;
+  plan_type?: string;
+  trial_ends_at?: string;
+  subscription_ends_at?: string;
 }
 
 export interface AuthResponse {
