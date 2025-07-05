@@ -17,50 +17,79 @@ const openai = new OpenAI({
 });
 
 // Default prompt fallback
-const DEFAULT_PROMPT = `You are a developer building SaaS apps, with a dark sense of humour and a blunt, no-bullshit tone.
+const DEFAULT_PROMPT = `You are writing tweets for a dev building a SaaS product. Your tone is sharp, dry, honest. No motivational fluff. No soft reflections. Just real updates, observations, and occasional rants.
 
-Generate tweets based on what you did or learned today.
-Stick to your voice: sharp, a bit cynical, occasionally funny, but never soft or self-indulgent.
-No therapy-speak. No "i regret eating this" nonsense. No vague life lessons or cringe reflections.
-Make them sound like someone who's actually building, messing up, and learning—without crying about it.
-They can be observations, questions, mini-rants, or dry one-liners.
+Style: like you're texting another dev. No fancy punctuation. No dashes, no semicolons, no colons. Use lowercase unless a proper noun needs it.
 
-Rules:
-- No emojis
-- Don't make it sound like a motivational thread
-- Don't capitalise unless necessary
-- Use British spelling
-- Swear words allowed but not overused
-- Avoid soft or sentimental takes
-- Keep it real, not corny`;
+Keep tweets short but impactful. No setups, no rhetorical questions. No “apparently”, “bloody”, or any British filler. Swearing is allowed but not required. Use only if it hits.
+
+You don’t explain things like a teacher. You just say what happened or what you’re working on.
+
+Generate between 3 and 6 tweets per generation. No threads. No hashtags. No promotional tone.
+
+If there’s a screenshot or video, refer to it casually (e.g. “screenshot below”). Otherwise, don’t mention visuals.`;
 
 
 
 // POST /api/ai/generate-posts
 router.post('/generate-posts', checkGenerationLimit, async (req: Request, res: Response) => {
   try {
+    console.log('🎯 [AI Route] Starting post generation request');
+    
     const userId = authenticateRequest(req);
     
+    console.log('🔐 [AI Route] Authentication check:', {
+      userId: userId,
+      hasAuthHeader: !!req.headers.authorization,
+      userAgent: req.headers['user-agent']
+    });
+    
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      console.log('❌ [AI Route] Authentication failed - returning 401');
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
 
     // Get user from middleware (it's attached to req.user)
     const user = (req as any).user;
+    
+    console.log('👤 [AI Route] User from middleware:', {
+      id: user?.id,
+      email: user?.email,
+      plan_type: user?.plan_type,
+      subscription_status: user?.subscription_status,
+      hasCustomPrompt: !!user?.custom_prompt
+    });
 
     const { logText, dailyLogId, selectionStart, selectionEnd } = req.body;
 
+    console.log('📝 [AI Route] Request data:', {
+      logTextLength: logText?.length || 0,
+      dailyLogId,
+      selectionStart,
+      selectionEnd,
+      hasLogText: !!logText
+    });
+
     if (!logText) {
-      return res.status(400).json({ error: 'Log text is required' });
+      console.log('❌ [AI Route] No log text provided - returning 400');
+      res.status(400).json({ error: 'Log text is required' });
+      return;
     }
 
     if (selectionStart === undefined || selectionEnd === undefined) {
+      console.log('❌ [AI Route] Missing selection positions - returning 400');
       return res.status(400).json({ error: 'Selection positions are required' });
     }
 
     // Use custom prompt if available, otherwise use default
     const basePrompt = user?.custom_prompt || DEFAULT_PROMPT;
     
+    console.log('🤖 [AI Route] Using prompt:', {
+      isCustomPrompt: !!user?.custom_prompt,
+      promptLength: basePrompt.length
+    });
+
     // Build the complete prompt with log text and JSON format instructions
     const prompt = `${basePrompt}
 

@@ -266,35 +266,71 @@ export default function LogsComponent() {
         headers.Authorization = `Bearer ${token}`;
       }
 
+      const requestData = { 
+        logText: selectedText,
+        dailyLogId: currentLog?.id,
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd
+      };
+
+      console.log('🚀 Sending AI request:', {
+        url: `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
+        headers: { ...headers, Authorization: token ? `Bearer ${token.substring(0, 20)}...` : 'None' },
+        data: requestData,
+        user: user ? { id: user.id, email: user.email } : 'No user'
+      });
+
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
-        { 
-          logText: selectedText,
-          dailyLogId: currentLog?.id,
-          selectionStart: textarea.selectionStart,
-          selectionEnd: textarea.selectionEnd
-        },
+        requestData,
         { 
           withCredentials: true,
           headers: headers
         }
       );
       const data = res.data;
-      console.log('AI generated posts:', data.tweets);
-      console.log('Saved posts:', data.saved_posts);
-      console.log('Post generation:', data.post_generation);
+      console.log('✅ AI generated posts successfully:', data.tweets);
+      console.log('✅ Saved posts:', data.saved_posts);
+      console.log('✅ Post generation:', data.post_generation);
       
       // Reload post generations to show the new blue dot
       if (currentLog?.id) {
-        console.log('Reloading post generations for log:', currentLog.id);
+        console.log('🔄 Reloading post generations for log:', currentLog.id);
         await loadPostGenerations(currentLog.id);
       } else {
-        console.log('No currentLog.id available for reloading generations');
+        console.log('⚠️ No currentLog.id available for reloading generations');
       }
       
       // You could show a success message here
     } catch (err) {
-      console.error('Error sending to AI:', err);
+      console.error('❌ Error sending to AI:', err);
+      
+      if (axios.isAxiosError(err)) {
+        console.error('📊 Axios Error Details:', {
+          status: err.response?.status,
+          statusText: err.response?.statusText,
+          data: err.response?.data,
+          config: {
+            url: err.config?.url,
+            method: err.config?.method,
+            headers: err.config?.headers
+          }
+        });
+        
+        // Log specific error details for 403
+        if (err.response?.status === 403) {
+          console.error('🚫 403 Forbidden Details:', {
+            errorMessage: err.response?.data?.error,
+            message: err.response?.data?.message,
+            upgradeRequired: err.response?.data?.upgrade_required,
+            usage: err.response?.data?.used ? `${err.response.data.used}/${err.response.data.limit}` : 'Unknown',
+            plan: err.response?.data?.plan,
+            pricing: err.response?.data?.pricing
+          });
+        }
+      } else {
+        console.error('❌ Non-Axios Error:', err);
+      }
     } finally {
       setAiLoading(false);
     }
@@ -325,8 +361,6 @@ export default function LogsComponent() {
       console.error('Error loading posts for generation:', err);
     }
   };
-
-
 
   // Don't show anything if not authenticated
   if (!isAuthenticated) {

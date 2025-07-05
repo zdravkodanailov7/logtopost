@@ -3,8 +3,12 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users } from '../schema';
 import { hashPassword, comparePassword, generateToken, verifyToken } from '../utils/auth';
+import Stripe from 'stripe';
 
 const router = express.Router();
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // Email validation helper
 const isValidEmail = (email: string): boolean => {
@@ -30,11 +34,38 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
-    // Check if user already exists
+    // Check if user already exists in our database
     const existingUser = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
     
     if (existingUser.length > 0) {
       return res.status(409).json({ error: 'User with this email already exists' });
+    }
+
+    // ANTI-ABUSE CHECK: Check if Stripe customer exists with this email
+    let hasHadTrialBefore = false;
+    try {
+      const existingCustomers = await stripe.customers.list({
+        email: email.toLowerCase(),
+        limit: 1
+      });
+
+      if (existingCustomers.data.length > 0) {
+        const customerId = existingCustomers.data[0].id;
+        
+        // Check if this customer has had any subscriptions (indicating previous trial/subscription)
+        const subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          limit: 1
+        });
+
+        if (subscriptions.data.length > 0) {
+          hasHadTrialBefore = true;
+          console.log('🚫 Anti-abuse: Email', email, 'has existing Stripe customer with previous subscriptions');
+        }
+      }
+    } catch (stripeError) {
+      console.error('⚠️ Stripe customer check failed:', stripeError);
+      // Continue with registration even if Stripe check fails
     }
 
     // Hash password and create user
@@ -43,8 +74,10 @@ router.post('/register', async (req: Request, res: Response) => {
     const [newUser] = await db.insert(users).values({
       email: email.toLowerCase(),
       password: hashedPassword,
-      subscription_status: 'trial',  // Explicitly set trial status
-      plan_type: 'trial',           // Explicitly set trial plan
+      subscription_status: hasHadTrialBefore ? 'cancelled' : 'trial',  // No trial if they've had one before
+      plan_type: hasHadTrialBefore ? 'premium' : 'trial',             // Set appropriate plan type
+      has_had_trial: hasHadTrialBefore,                               // Mark if they've had trial before
+      trial_ends_at: hasHadTrialBefore ? null : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now, or null if no trial
     }).returning({ id: users.id, email: users.email, created_at: users.created_at });
 
     // Generate JWT token
@@ -58,12 +91,17 @@ router.post('/register', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    const responseMessage = hasHadTrialBefore 
+      ? 'Account created successfully. Previous trial detected - please subscribe to continue.'
+      : 'User created successfully';
+
     res.status(201).json({
-      message: 'User created successfully',
+      message: responseMessage,
       user: {
         id: newUser.id,
         email: newUser.email,
-        created_at: newUser.created_at
+        created_at: newUser.created_at,
+        has_had_trial: hasHadTrialBefore
       },
       token
     });

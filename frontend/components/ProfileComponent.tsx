@@ -8,22 +8,13 @@ import { toast } from "sonner";
 import { ConfirmationDialog } from './ui/confirmation-dialog';
 
 // Default prompt from the backend
-const DEFAULT_PROMPT = `You are Zdravko, a 20-year-old dev building SaaS apps, with a dark sense of humour and a blunt, no-bullshit tone.
+const DEFAULT_PROMPT = `You are writing tweets for a software developer who builds SaaS tools. Your tone is dry, sharp, cynical, and honest. Each tweet should feel like a real person posting mid-build, mid-breakdown, or mid-breakthrough. You don’t sugarcoat. No vague lessons, no performative gratitude. Just what happened, what broke, what worked, or what you're realising while building.
 
-Generate tweets based on what you did or learned today.
-Stick to your voice: sharp, a bit cynical, occasionally funny, but never soft or self-indulgent.
-No therapy-speak. No "i regret eating this" nonsense. No vague life lessons or cringe reflections.
-Make them sound like someone who's actually building, messing up, and learning—without crying about it.
-They can be observations, questions, mini-rants, or dry one-liners.
+The tweets should assume they’re part of a “building in public” community and will include a screenshot or screen recording. Include technical bits where relevant, insights when they naturally fit, and brutal honesty always.
 
-Rules:
-- No emojis
-- Don't make it sound like a motivational thread
-- Don't capitalise unless necessary
-- Use British spelling
-- Swear words allowed but not overused
-- Avoid soft or sentimental takes
-- Keep it real, not corny`;
+Output 2-3 tweets max. Make each one count.
+
+`;
 
 export function ProfileComponent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -32,7 +23,7 @@ export function ProfileComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const { isAuthenticated, canEditPrompt, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -101,7 +92,6 @@ export function ProfileComponent() {
     );
   }
 
-
   if (isLoading) {
     return (
       <div className="p-6">
@@ -131,35 +121,12 @@ export function ProfileComponent() {
         <div className="relative">
           <textarea
             value={customPrompt}
-            onChange={(e) => canEditPrompt && setCustomPrompt(e.target.value)}
+            onChange={(e) => setCustomPrompt(e.target.value)}
             placeholder="Enter your AI prompt here..."
             maxLength={2000}
-            className={`w-full ${canEditPrompt ? 'h-[500px]' : 'h-[120px]'} p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-ring ${
-              !canEditPrompt ? 'blur-sm pointer-events-none' : ''
-            }`}
+            className="w-full h-[500px] p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none"
             style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace' }}
           />
-          
-          {/* Overlay for non-pro users */}
-          {!canEditPrompt && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg">
-              <div className="text-center p-4 max-w-xs">
-                <div className="text-orange-500 font-medium text-sm mb-2">
-                  Pro Feature
-                </div>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Upgrade to customize AI prompts
-                </p>
-                <Button
-                  size="sm"
-                  className="cursor-pointer text-xs"
-                  onClick={() => window.location.href = '/#pricing'}
-                >
-                  Upgrade
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
         
         <div className="flex items-center justify-between mt-2">
@@ -173,17 +140,16 @@ export function ProfileComponent() {
       <div className="flex gap-3">
         <Button
           onClick={saveProfile}
-          disabled={isSaving || !canEditPrompt}
-          className={`flex-1 ${canEditPrompt ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+          disabled={isSaving}
+          className="flex-1"
         >
-          {isSaving ? 'Saving...' : canEditPrompt ? 'Save Changes' : 'Save Changes (Pro Required)'}
+          {isSaving ? 'Saving...' : 'Save Changes'}
         </Button>
         
         <Button
           variant="outline"
           onClick={resetToDefault}
-          disabled={isSaving || !canEditPrompt}
-          className={`${canEditPrompt ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+          disabled={isSaving}
         >
           Reset to Default
         </Button>
