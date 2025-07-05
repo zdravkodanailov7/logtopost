@@ -287,19 +287,21 @@ function PricingSection() {
   const { isAuthenticated, createCheckoutSession } = useAuth();
   const router = useRouter();
 
-  const plans = Object.values(PLAN_OPTIONS).map(plan => ({
+  // Get the single Premium plan
+  const plan = PLAN_OPTIONS.premium;
+  const formattedPlan = {
     name: plan.name,
     price: `${plan.currency}${plan.price}`,
     generations: plan.generations,
     features: plan.features.map(feature => feature.replace('generations/month', 'post generations per month')),
     popular: plan.popular
-  }));
+  };
 
-  const handleGetStarted = async (planType: string) => {
+  const handleGetStarted = async () => {
     if (isAuthenticated) {
-      // Create checkout session
+      // Create checkout session for premium plan
       try {
-        const checkoutUrl = await createCheckoutSession(planType);
+        const checkoutUrl = await createCheckoutSession('premium');
         window.location.href = checkoutUrl;
       } catch (error) {
         console.error('Checkout error:', error);
@@ -307,7 +309,7 @@ function PricingSection() {
       }
     } else {
       // Store the selected plan and redirect to register
-      localStorage.setItem('selectedPlan', planType);
+      localStorage.setItem('selectedPlan', 'premium');
       router.push('/register');
     }
   };
@@ -318,63 +320,50 @@ function PricingSection() {
       <ProblemSolutionSection />
       
       <motion.div
-        className="grid md:grid-cols-3 gap-6"
+        className="flex justify-center"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, delay: 0.2 }}
       >
-        {plans.map((plan, index) => (
-          <motion.div
-            key={plan.name}
-            className={`relative rounded-lg border p-6 ${
-              plan.popular 
-                ? 'border-primary bg-primary/5 scale-105' 
-                : 'border-border bg-card'
-            }`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
-          >
-            {plan.popular && (
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium">
-                  Most Popular
-                </span>
-              </div>
-            )}
-            
-            <div className="text-center">
-              <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
-              <div className="mb-4">
-                <span className="text-3xl font-bold">{plan.price}</span>
-                <span className="text-muted-foreground">/month</span>
-              </div>
-              <p className="text-muted-foreground mb-6">
-                {plan.generations} generations per month
-              </p>
+        <motion.div
+          className="relative rounded-lg border p-8 border-primary bg-primary/5 max-w-md w-full"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+            <span className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-medium">
+              Premium Plan
+            </span>
+          </div>
+          
+          <div className="text-center">
+            <h3 className="text-2xl font-semibold mb-3">{formattedPlan.name}</h3>
+            <div className="mb-6">
+              <span className="text-4xl font-bold">{formattedPlan.price}</span>
+              <span className="text-muted-foreground text-lg">/month</span>
             </div>
+            <p className="text-muted-foreground mb-8 text-lg">
+              {formattedPlan.generations} generations per month
+            </p>
+          </div>
 
-            <ul className="space-y-3 mb-8">
-              {plan.features.map((feature, featureIndex) => (
-                <li key={featureIndex} className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                  <span className="text-sm">{feature}</span>
-                </li>
-              ))}
-            </ul>
+          <ul className="space-y-4 mb-10">
+            {formattedPlan.features.map((feature, featureIndex) => (
+              <li key={featureIndex} className="flex items-center gap-3">
+                <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                <span className="text-base">{feature}</span>
+              </li>
+            ))}
+          </ul>
 
-            <Button 
-              onClick={() => handleGetStarted(plan.name.toLowerCase())}
-              className={`w-full cursor-pointer ${
-                plan.popular 
-                  ? 'bg-primary hover:bg-primary/90' 
-                  : 'bg-secondary hover:bg-secondary/80'
-              }`}
-            >
-              Start 7 Day Free Trial
-            </Button>
-          </motion.div>
-        ))}
+          <Button 
+            onClick={handleGetStarted}
+            className="w-full cursor-pointer bg-primary hover:bg-primary/90 text-lg py-6"
+          >
+            Start 7 Day Free Trial
+          </Button>
+        </motion.div>
       </motion.div>
 
       <motion.div
@@ -383,11 +372,11 @@ function PricingSection() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.6 }}
       >
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground mb-2">
           Start with a 7-day free trial • 10 generations included
         </p>
-        <p className="text-xs text-muted-foreground">
-          All plans include access to our AI-powered content generation engine
+        <p className="text-sm text-muted-foreground">
+          Includes access to our AI-powered content generation engine and custom AI prompts
         </p>
       </motion.div>
     </div>

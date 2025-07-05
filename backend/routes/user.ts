@@ -99,6 +99,8 @@ router.get('/usage', async (req: Request, res: Response) => {
         id: users.id,
         subscription_status: users.subscription_status,
         plan_type: users.plan_type,
+        intended_plan_type: users.intended_plan_type,
+        has_had_trial: users.has_had_trial,
         generations_used_this_month: users.generations_used_this_month,
         trial_generations_used: users.trial_generations_used,
         trial_ends_at: users.trial_ends_at,
@@ -127,15 +129,20 @@ router.get('/usage', async (req: Request, res: Response) => {
     };
 
     const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
-    const used = user.subscription_status === 'trial' ? user.trial_generations_used : user.generations_used_this_month;
+    const used = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
+      ? user.trial_generations_used 
+      : user.generations_used_this_month;
     const remaining = limit - used;
 
-    // Check if trial expired
-    const trialExpired = user.subscription_status === 'trial' && user.trial_ends_at && new Date() > user.trial_ends_at;
+    // Check if trial expired (including cancelled trials)
+    const trialExpired = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
+      && user.trial_ends_at && new Date() > user.trial_ends_at;
 
     res.json({
       plan_type: user.plan_type,
       subscription_status: user.subscription_status,
+      intended_plan_type: user.intended_plan_type,
+      has_had_trial: user.has_had_trial,
       trial_ends_at: user.trial_ends_at,
       subscription_ends_at: user.subscription_ends_at,
       trial_expired: trialExpired,

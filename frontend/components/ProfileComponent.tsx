@@ -134,7 +134,7 @@ export function ProfileComponent() {
             onChange={(e) => canEditPrompt && setCustomPrompt(e.target.value)}
             placeholder="Enter your AI prompt here..."
             maxLength={2000}
-            className={`w-full h-[500px] p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-ring ${
+            className={`w-full ${canEditPrompt ? 'h-[500px]' : 'h-[120px]'} p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-ring ${
               !canEditPrompt ? 'blur-sm pointer-events-none' : ''
             }`}
             style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace' }}
@@ -142,25 +142,20 @@ export function ProfileComponent() {
           
           {/* Overlay for non-pro users */}
           {!canEditPrompt && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
-              <div className="text-center p-8 max-w-md">
-                <div className="mb-4">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
-                    <span className="text-2xl">🔒</span>
-                  </div>
-                  <h3 className="text-xl font-semibold text-foreground mb-2">
-                    Unlock Custom AI Prompts
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    Upgrade to Pro to edit custom prompts and customize how the AI generates posts from your logs with your own voice and style.
-                  </p>
+            <div className="absolute inset-0 flex items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg">
+              <div className="text-center p-4 max-w-xs">
+                <div className="text-orange-500 font-medium text-sm mb-2">
+                  Pro Feature
                 </div>
-                
+                <p className="text-xs text-muted-foreground mb-3">
+                  Upgrade to customize AI prompts
+                </p>
                 <Button
-                  className="cursor-pointer"
+                  size="sm"
+                  className="cursor-pointer text-xs"
                   onClick={() => window.location.href = '/#pricing'}
                 >
-                  Upgrade to Pro
+                  Upgrade
                 </Button>
               </div>
             </div>

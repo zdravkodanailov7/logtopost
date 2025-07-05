@@ -30,8 +30,11 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if trial has expired
-    if (user.subscription_status === 'trial' && user.trial_ends_at && new Date() > user.trial_ends_at) {
+    // Check if trial has expired (including cancelled trials)
+    const isTrialExpired = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
+      && user.trial_ends_at && new Date() > user.trial_ends_at;
+    
+    if (isTrialExpired) {
       return res.status(403).json({ 
         error: 'Trial expired', 
         message: 'Your trial has expired. Please upgrade to continue generating posts.',
@@ -44,8 +47,9 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       });
     }
 
-    // Check if subscription is inactive
-    if (user.subscription_status === 'canceled' || user.subscription_status === 'past_due') {
+    // Check if subscription is inactive (but allow cancelled trials until they expire)
+    if (user.subscription_status === 'past_due' || 
+        (user.subscription_status === 'canceled' && !user.trial_ends_at)) {
       return res.status(403).json({ 
         error: 'Subscription inactive', 
         message: 'Your subscription is inactive. Please update your payment method or upgrade your plan.',
@@ -55,12 +59,15 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
 
     // Check generation limits
     const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
-    const used = user.subscription_status === 'trial' ? user.trial_generations_used : user.generations_used_this_month;
+    const used = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
+      ? user.trial_generations_used 
+      : user.generations_used_this_month;
 
     if (used >= limit) {
+      const isTrialStatus = user.subscription_status === 'trial' || user.subscription_status === 'cancelled';
       return res.status(403).json({ 
         error: 'Generation limit reached', 
-        message: `You've reached your ${limit} generation limit for this ${user.subscription_status === 'trial' ? 'trial' : 'month'}.`,
+        message: `You've reached your ${limit} generation limit for this ${isTrialStatus ? 'trial' : 'month'}.`,
         limit,
         used,
         plan: user.plan_type,

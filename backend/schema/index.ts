@@ -14,8 +14,8 @@ export const users = pgTable('users', {
   // Stripe & Subscription fields
   stripe_customer_id: varchar('stripe_customer_id', { length: 255 }),
   stripe_subscription_id: varchar('stripe_subscription_id', { length: 255 }),
-  subscription_status: varchar('subscription_status', { length: 50 }).default('trial'), // trial, active, canceled, past_due
-  plan_type: varchar('plan_type', { length: 50 }).default('trial'), // trial, basic, pro, advanced
+  subscription_status: varchar('subscription_status', { length: 50 }).default('trial'), // trial, active, cancelled, past_due
+  plan_type: varchar('plan_type', { length: 50 }).default('trial'), // trial, premium
   
   // Usage tracking
   generations_used_this_month: integer('generations_used_this_month').default(0).notNull(),
@@ -23,6 +23,7 @@ export const users = pgTable('users', {
   
   // Trial tracking
   trial_ends_at: timestamp('trial_ends_at').default(sql`NOW() + INTERVAL '7 days'`),
+  has_had_trial: boolean('has_had_trial').default(true).notNull(), // Track if user has ever had a trial
   subscription_ends_at: timestamp('subscription_ends_at'),
   
   created_at: timestamp('created_at').defaultNow().notNull(),

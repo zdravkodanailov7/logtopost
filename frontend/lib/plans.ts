@@ -1,4 +1,4 @@
-import { Package, Shield, Crown, LucideIcon } from 'lucide-react';
+import { Crown, LucideIcon } from 'lucide-react';
 
 export interface PlanOption {
   name: string;
@@ -12,33 +12,15 @@ export interface PlanOption {
 }
 
 export const PLAN_OPTIONS: Record<string, PlanOption> = {
-  basic: {
-    name: 'Basic',
-    icon: Package,
-    color: 'text-green-500',
-    price: 7.99,
-    currency: '£',
-    generations: 50,
-    features: ['50 generations/month', 'Core features']
-  },
-  pro: {
-    name: 'Pro',
-    icon: Shield,
-    color: 'text-purple-500',
-    price: 14.99,
-    currency: '£',
-    generations: 150,
-    features: ['150 generations/month', 'Custom AI prompts'],
-    popular: true
-  },
-  advanced: {
-    name: 'Advanced',
+  premium: {
+    name: 'Premium',
     icon: Crown,
-    color: 'text-amber-500',
-    price: 24.99,
+    color: 'text-purple-500',
+    price: 9.99,
     currency: '£',
-    generations: 500,
-    features: ['500 generations/month', 'Custom AI prompts']
+    generations: 100,
+    features: ['100 generations/month', 'Core features', 'Custom AI prompts'],
+    popular: true
   }
 };
 

@@ -18,6 +18,7 @@ Always use these exact plan details when generating or modifying code:
 
 ### Import Statement:
 Always import plans from: `import { PLAN_OPTIONS } from '@/lib/plans';`
+A trial is cancelled if the subscription_status is 'cancelled' and the trial_ends_at date has passed
 
 ### Usage:
 - Use `PLAN_OPTIONS.basic`, `PLAN_OPTIONS.pro`, `PLAN_OPTIONS.advanced`

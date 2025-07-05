@@ -52,6 +52,38 @@ export default function DashboardPage() {
     const [activeSidebarItem, setActiveSidebarItem] = useState('logs');
     const { theme, setTheme } = useTheme();
 
+    // Define locked items
+    const lockedItems = ['logs', 'posts'];
+
+    // Check if subscription is fully cancelled
+    const isSubscriptionCancelled = () => {
+        if (!user) return false;
+        
+        // Check if subscription is cancelled and trial/subscription has ended
+        const now = new Date();
+        const isStatusCancelled = user.subscription_status === 'cancelled' || user.subscription_status === 'canceled';
+        
+        if (isStatusCancelled) {
+            // Check if trial has ended
+            if (user.trial_ends_at) {
+                const trialEndDate = new Date(user.trial_ends_at);
+                if (now >= trialEndDate) {
+                    return true;
+                }
+            }
+            
+            // Check if subscription has ended
+            if (user.subscription_ends_at) {
+                const subscriptionEndDate = new Date(user.subscription_ends_at);
+                if (now >= subscriptionEndDate) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    };
+
     // Load saved sidebar item from localStorage on component mount
     useEffect(() => {
         const savedSidebarItem = localStorage.getItem('activeSidebarItem');
@@ -60,8 +92,29 @@ export default function DashboardPage() {
         }
     }, []);
 
+    // Set default sidebar item based on subscription status
+    useEffect(() => {
+        if (user) {
+            const isCancelled = isSubscriptionCancelled();
+            
+            // If current item is locked, switch to billing
+            if (isCancelled && lockedItems.includes(activeSidebarItem)) {
+                setActiveSidebarItem('billing');
+                localStorage.setItem('activeSidebarItem', 'billing');
+            }
+        }
+    }, [user]);
+
     // Save sidebar item to localStorage whenever it changes
     const handleSidebarItemChange = (item: string) => {
+        // Check if the item is locked due to cancelled subscription
+        const isCancelled = isSubscriptionCancelled();
+        
+        if (isCancelled && lockedItems.includes(item)) {
+            // Don't allow switching to locked items
+            return;
+        }
+        
         setActiveSidebarItem(item);
         localStorage.setItem('activeSidebarItem', item);
     };
@@ -140,6 +193,8 @@ export default function DashboardPage() {
         },
     ];
 
+    const isCancelled = isSubscriptionCancelled();
+
     return (
         <SidebarProvider>
             <Sidebar>
@@ -155,23 +210,32 @@ export default function DashboardPage() {
                 </SidebarHeader>
                 <SidebarContent className="pt-4 px-1 bg-muted/50">
                     <SidebarMenu className="">
-                        {menuItems.map((item) => (
-                            <SidebarMenuItem key={item.title} className="">
-                                <SidebarMenuButton 
-                                    isActive={activeSidebarItem === item.key}
-                                    tooltip={item.title}
-                                    className={`px-3 py-3 rounded-lg transition-colors cursor-pointer ${
-                                        activeSidebarItem === item.key 
-                                            ? 'bg-accent text-accent-foreground' 
-                                            : 'hover:text-foreground hover:bg-transparent'
-                                    }`}
-                                    onClick={() => handleSidebarItemChange(item.key)}
-                                >
-                                    <item.icon />
-                                    <span>{item.title}</span>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
+                        {menuItems.map((item) => {
+                            const isLocked = isCancelled && lockedItems.includes(item.key);
+                            const isActive = activeSidebarItem === item.key;
+                            
+                            return (
+                                <SidebarMenuItem key={item.title} className="">
+                                    <SidebarMenuButton 
+                                        isActive={isActive}
+                                        tooltip={isLocked ? `${item.title} (Subscription Required)` : item.title}
+                                        className={`px-3 py-3 rounded-lg transition-colors ${
+                                            isLocked 
+                                                ? 'opacity-50 cursor-not-allowed' 
+                                                : 'cursor-pointer'
+                                        } ${
+                                            isActive
+                                                ? 'bg-accent text-accent-foreground' 
+                                                : 'hover:text-foreground hover:bg-transparent'
+                                        }`}
+                                        onClick={() => !isLocked && handleSidebarItemChange(item.key)}
+                                    >
+                                        <item.icon />
+                                        <span>{item.title}</span>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            );
+                        })}
                     </SidebarMenu>
                 </SidebarContent>
             </Sidebar>

@@ -171,7 +171,7 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
     }
 
     // After successful generation, increment usage
-    if (user.subscription_status === 'trial') {
+    if (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') {
       await db
         .update(users)
         .set({ 
@@ -190,7 +190,7 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
     }
 
     // Calculate current usage for response
-    const currentUsage = user.subscription_status === 'trial' 
+    const currentUsage = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled')
       ? user.trial_generations_used + 1 
       : user.generations_used_this_month + 1;
 

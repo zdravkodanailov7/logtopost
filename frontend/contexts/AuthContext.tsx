@@ -13,6 +13,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   createCheckoutSession: (plan: string) => Promise<string>;
   canEditPrompt: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -125,6 +126,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user.subscription_status === 'active' && 
     ['pro', 'advanced'].includes(user.plan_type || ''));
 
+  const refreshUser = async () => {
+    try {
+      const token = getToken();
+      if (token) {
+        const { user: currentUser } = await getCurrentUser(token);
+        setUser(currentUser);
+        saveUser(currentUser);
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      // If refresh fails, the user might be logged out
+      handleLogout();
+    }
+  };
+
   const value: AuthContextType = {
     user,
     loading,
@@ -134,6 +150,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isAuthenticated: !!user,
     createCheckoutSession,
     canEditPrompt,
+    refreshUser,
   };
 
   return (

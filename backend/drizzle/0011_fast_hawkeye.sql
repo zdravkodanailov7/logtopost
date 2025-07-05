@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "intended_plan_type" varchar(50) DEFAULT 'basic';

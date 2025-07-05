@@ -43,13 +43,7 @@ app.use(cookieParser());
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`\n🚀 ${req.method} ${req.url} - ${new Date().toISOString()}`);
-  console.log('Headers:', {
-    'user-agent': req.headers['user-agent']?.substring(0, 50),
-    'origin': req.headers.origin,
-    'authorization': req.headers.authorization ? 'Bearer [PRESENT]' : 'None',
-    'cookie': req.headers.cookie ? `Present (${req.headers.cookie.length} chars)` : 'None'
-  });
+  console.log(`🚀 ${req.method} ${req.url} - ${new Date().toISOString()}`);
   next();
 });
 
