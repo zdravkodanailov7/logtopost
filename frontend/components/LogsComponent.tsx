@@ -8,7 +8,6 @@ import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Wand2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { PostsSheet } from './PostsSheet';
 
 export default function LogsComponent() {
   const [date, setDate] = useState(new Date());
@@ -23,11 +22,6 @@ export default function LogsComponent() {
   const [selectedText, setSelectedText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [textSize, setTextSize] = useState<'small' | 'medium' | 'large'>('small');
-  const [postGenerations, setPostGenerations] = useState<any[]>([]);
-  const [selectedGeneration, setSelectedGeneration] = useState<any>(null);
-  const [generationPosts, setGenerationPosts] = useState<any[]>([]);
-  const [showPostsDialog, setShowPostsDialog] = useState(false);
-  const [hoveredGeneration, setHoveredGeneration] = useState<string | null>(null);
   
   const { isAuthenticated, user } = useAuth();
 
@@ -55,42 +49,10 @@ export default function LogsComponent() {
     }
   }, [isClient]);
 
-  // Debug: Log postGenerations when they change
-  useEffect(() => {
-    console.log('PostGenerations updated:', postGenerations);
-    console.log('Text length:', text.length);
-  }, [postGenerations, text]);
-
   const handleTextSizeChange = (size: 'small' | 'medium' | 'large') => {
     setTextSize(size);
     if (isClient) {
       localStorage.setItem('text_size', size);
-    }
-  };
-
-  // Load post generations for the current log
-  const loadPostGenerations = async (logId: string) => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/post-generations/${logId}`,
-        { 
-          withCredentials: true,
-          headers: headers
-        }
-      );
-      
-      console.log('Loaded post generations:', res.data.generations);
-      setPostGenerations(res.data.generations || []);
-    } catch (err) {
-      console.error('Error loading post generations:', err);
-      setPostGenerations([]);
     }
   };
 
@@ -109,23 +71,16 @@ export default function LogsComponent() {
         setText(result.log.content || '');
         setCurrentLog(result.log);
         setLogExists(true);
-        
-        // Load post generations for this log
-        console.log('Loading post generations for log:', result.log.id);
-        await loadPostGenerations(result.log.id);
-        console.log('Finished loading post generations');
       } else {
         setText('');
         setCurrentLog(null);
         setLogExists(false);
-        setPostGenerations([]);
       }
     } catch (err) {
       console.error('Error loading log:', err);
       setError('Failed to load log. Please try again.');
       setText('');
       setLogExists(false);
-      setPostGenerations([]);
     } finally {
       setLoading(false);
     }
@@ -198,14 +153,12 @@ export default function LogsComponent() {
 
   // Save/update log
   const saveLog = async (content: string) => {
-    if (!isAuthenticated || !logExists) return;
+    if (!isAuthenticated || !currentLog) return;
     
     setSaving(true);
-    setError(null);
     
     try {
-      const result = await updateLog(date, content);
-      setCurrentLog(result.log);
+      await updateLog(date, content);
     } catch (err) {
       console.error('Error saving log:', err);
       setError('Failed to save log. Please try again.');
@@ -240,25 +193,24 @@ export default function LogsComponent() {
     }
   };
 
-  // Handle selection change in textarea
   const handleSelectionChange = () => {
     const textarea = textareaRef.current;
     if (textarea) {
-      const selection = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
-      setSelectedText(selection);
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = textarea.value.substring(start, end);
+      setSelectedText(selected);
     }
   };
 
-  // Send selected text to AI endpoint
   const handleSendToAI = async () => {
-    if (!selectedText) return;
-    
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+    if (!selectedText.trim() || !isAuthenticated || !currentLog) return;
     
     setAiLoading(true);
+    setError(null);
+    
     try {
-      // Get token from localStorage and add Authorization header
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       const token = localStorage.getItem('auth_token');
       const headers: any = { 'Content-Type': 'application/json' };
       
@@ -266,99 +218,91 @@ export default function LogsComponent() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const requestData = { 
+      const textarea = textareaRef.current;
+      const selectionStart = textarea ? textarea.selectionStart : 0;
+      const selectionEnd = textarea ? textarea.selectionEnd : 0;
+
+      const requestData = {
         logText: selectedText,
-        dailyLogId: currentLog?.id,
-        selectionStart: textarea.selectionStart,
-        selectionEnd: textarea.selectionEnd
+        dailyLogId: currentLog.id,
+        selectionStart: selectionStart,
+        selectionEnd: selectionEnd,
       };
 
+      // Debug logging
       console.log('🚀 Sending AI request:', {
-        url: `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
-        headers: { ...headers, Authorization: token ? `Bearer ${token.substring(0, 20)}...` : 'None' },
-        data: requestData,
-        user: user ? { id: user.id, email: user.email } : 'No user'
+        url: `${API_BASE}/api/ai/generate-posts`,
+        logText: selectedText,
+        logTextLength: selectedText.length,
+        dailyLogId: currentLog.id,
+        selectionStart,
+        selectionEnd,
+        requestData,
+        hasToken: !!token,
+        tokenPrefix: token ? token.substring(0, 10) + '...' : 'none'
       });
 
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/generate-posts`,
+      const response = await axios.post(
+        `${API_BASE}/api/ai/generate-posts`,
         requestData,
         { 
           withCredentials: true,
           headers: headers
         }
       );
-      const data = res.data;
-      console.log('✅ AI generated posts successfully:', data.tweets);
-      console.log('✅ Saved posts:', data.saved_posts);
-      console.log('✅ Post generation:', data.post_generation);
-      
-      // Reload post generations to show the new blue dot
-      if (currentLog?.id) {
-        console.log('🔄 Reloading post generations for log:', currentLog.id);
-        await loadPostGenerations(currentLog.id);
-      } else {
-        console.log('⚠️ No currentLog.id available for reloading generations');
-      }
-      
-      // You could show a success message here
-    } catch (err) {
-      console.error('❌ Error sending to AI:', err);
-      
-      if (axios.isAxiosError(err)) {
-        console.error('📊 Axios Error Details:', {
-          status: err.response?.status,
-          statusText: err.response?.statusText,
-          data: err.response?.data,
-          config: {
-            url: err.config?.url,
-            method: err.config?.method,
-            headers: err.config?.headers
-          }
-        });
-        
-        // Log specific error details for 403
-        if (err.response?.status === 403) {
-          console.error('🚫 403 Forbidden Details:', {
-            errorMessage: err.response?.data?.error,
-            message: err.response?.data?.message,
-            upgradeRequired: err.response?.data?.upgrade_required,
-            usage: err.response?.data?.used ? `${err.response.data.used}/${err.response.data.limit}` : 'Unknown',
-            plan: err.response?.data?.plan,
-            pricing: err.response?.data?.pricing
-          });
+
+      console.log('✅ AI response received:', response.data);
+
+      // Check if we have tweets in the response (successful generation)
+      if (response.data.tweets && response.data.tweets.length > 0) {
+        console.log('Posts generated successfully:', response.data.tweets);
+        // Clear the selection
+        setSelectedText('');
+        if (textarea) {
+          textarea.setSelectionRange(0, 0);
+        }
+        // Show success message
+        setError(null);
+      } else if (response.data.success) {
+        console.log('Posts generated successfully');
+        // Clear the selection
+        setSelectedText('');
+        if (textarea) {
+          textarea.setSelectionRange(0, 0);
         }
       } else {
-        console.error('❌ Non-Axios Error:', err);
+        console.error('Failed to generate posts:', response.data.error);
+        setError(response.data.error || 'Failed to generate posts. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('❌ Error generating posts:', err);
+      
+      // Log detailed error information
+      if (err.response) {
+        console.error('🔍 Response error details:', {
+          status: err.response.status,
+          statusText: err.response.statusText,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+      } else if (err.request) {
+        console.error('🔍 Request error details:', err.request);
+      } else {
+        console.error('🔍 General error details:', err.message);
+      }
+      
+      if (err.response?.status === 402) {
+        setError('You have reached your usage limit. Please upgrade your plan or wait for your limit to reset.');
+      } else if (err.response?.status === 401) {
+        setError('Authentication failed. Please try logging in again.');
+      } else if (err.response?.status === 400) {
+        const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Bad request - please check your input';
+        setError(`Request error: ${errorMsg}`);
+      } else {
+        setError('Failed to generate posts. Please try again.');
       }
     } finally {
       setAiLoading(false);
-    }
-  };
-
-  // Handle clicking on a blue dot to show posts
-  const handleDotClick = async (generation: any) => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/ai/posts/${generation.id}`,
-        { 
-          withCredentials: true,
-          headers: headers
-        }
-      );
-      
-      setSelectedGeneration(generation);
-      setGenerationPosts(res.data.posts || []);
-      setShowPostsDialog(true);
-    } catch (err) {
-      console.error('Error loading posts for generation:', err);
     }
   };
 
@@ -411,42 +355,8 @@ export default function LogsComponent() {
           ) : logExists ? (
             /* Existing log - show textarea */
             <div className="flex">
-              {/* Left sidebar for generation dots */}
-              <div className="w-8 flex-shrink-0 relative">
-              </div>
-              
               {/* Textarea container */}
               <div className="flex-1 relative bg-background">
-                {/* Text highlight overlay */}
-                {hoveredGeneration && (
-                  <div 
-                    className={`absolute inset-0 pointer-events-none ${getTextSizeClass()} bg-background text-transparent
-                               resize-none border-none whitespace-pre-wrap break-words`}
-                    style={{ 
-                      height: textareaRef.current?.style.height || 'auto', 
-                      minHeight: '100px',
-                      padding: textareaRef.current ? window.getComputedStyle(textareaRef.current).padding : '0'
-                    }}
-                  >
-                    {(() => {
-                      const generation = postGenerations.find(g => g.id === hoveredGeneration);
-                      if (!generation) return text;
-                      
-                      const beforeText = text.substring(0, generation.selection_start);
-                      const selectedText = text.substring(generation.selection_start, generation.selection_end);
-                      const afterText = text.substring(generation.selection_end);
-                      
-                      return (
-                        <>
-                          {beforeText}
-                          <span className="bg-primary/20 text-red-500 z-10">{selectedText}</span>
-                          {afterText}
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
-                
                 <textarea
                   ref={(el) => {
                     textareaRef.current = el;
@@ -475,34 +385,6 @@ export default function LogsComponent() {
                   placeholder="Write your log for today…"
                   disabled={saving}
                 />
-                
-                {/* Generation dots */}
-                {text && postGenerations.map((generation, index) => {
-                  // Calculate position based on selection_end, but cap it to actual content
-                  const actualSelectionEnd = Math.min(generation.selection_end, text.trimEnd().length);
-                  const textBeforeEnd = text.substring(0, actualSelectionEnd);
-                  const lines = textBeforeEnd.split('\n');
-                  const lineNumber = lines.length - 1;
-                  
-                  // Position dots in the left margin
-                  const lineHeight = getTextSizeClass() === 'text-xs' ? 16 : 
-                                   getTextSizeClass() === 'text-sm' ? 20 : 24;
-                  const top = lineNumber * lineHeight + 5;
-                  
-                  console.log(`Rendering dot ${index + 1} at line ${lineNumber}, top: ${top}px, selection_end: ${generation.selection_end}, actual_end: ${actualSelectionEnd}`);
-                  
-                  return (
-                    <div
-                      key={generation.id}
-                      className="absolute w-4 h-4 bg-chart-1/20 hover:bg-chart-1/60 border border-green-500/60 hover:border-green-500 rounded-full cursor-pointer z-10 transition-all duration-400 hover:scale-125"
-                      style={{ top: `${top}px`, left: `-22px` }}
-                      onClick={() => handleDotClick(generation)}
-                      onMouseEnter={() => setHoveredGeneration(generation.id)}
-                      onMouseLeave={() => setHoveredGeneration(null)}
-                      title={`Generated ${new Date(generation.created_at).toLocaleString()}`}
-                    />
-                  );
-                })}
                 
                 {/* Saving indicator */}
                 {saving && (
@@ -533,15 +415,6 @@ export default function LogsComponent() {
           )}
         </div>
       </div>
-
-      {/* Posts Sheet */}
-      <PostsSheet 
-        isOpen={showPostsDialog}
-        onOpenChange={setShowPostsDialog}
-        selectedGeneration={selectedGeneration}
-        generationPosts={generationPosts}
-        setGenerationPosts={setGenerationPosts}
-      />
     </div>
   );
 }

@@ -8,13 +8,20 @@ import { toast } from "sonner";
 import { ConfirmationDialog } from './ui/confirmation-dialog';
 
 // Default prompt from the backend
-const DEFAULT_PROMPT = `You are writing tweets for a software developer who builds SaaS tools. Your tone is dry, sharp, cynical, and honest. Each tweet should feel like a real person posting mid-build, mid-breakdown, or mid-breakthrough. You don’t sugarcoat. No vague lessons, no performative gratitude. Just what happened, what broke, what worked, or what you're realising while building.
+const DEFAULT_PROMPT = `You are writing standalone tweets for a developer building a SaaS app. Your tone is dry, sharp, and honest. No fluff. No soft reflections. Just real updates, observations, and rants.
 
-The tweets should assume they’re part of a “building in public” community and will include a screenshot or screen recording. Include technical bits where relevant, insights when they naturally fit, and brutal honesty always.
+You write like you're texting another dev — direct, clear, no filler.
 
-Output 2-3 tweets max. Make each one count.
+Don’t write tweets that feel like broken fragments or bullet points.
+If two or three related thoughts belong together, combine them into one tweet.
+Use up to 280 characters when it makes sense. Each tweet should feel like a complete thought, not a half-sentence.
 
-`;
+Avoid fancy punctuation — no dashes, no semicolons, no colons. Use lowercase unless it’s a proper noun.
+No British filler (e.g. “bloody”, “folks”). Avoid the word “apparently.” Swearing is fine but only if it hits.
+
+No hashtags. No threads. No promotional tone.
+
+Generate between 3 and 6 tweets per generation. Each one should stand alone.`;
 
 export function ProfileComponent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
