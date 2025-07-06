@@ -169,6 +169,45 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Bulk delete posts (must be before /:id route)
+router.delete('/bulk', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { postIds } = req.body;
+    
+    if (!postIds || !Array.isArray(postIds) || postIds.length === 0) {
+      return res.status(400).json({ error: 'Post IDs array is required' });
+    }
+
+    // Delete posts one by one to ensure proper authorization
+    const deletePromises = postIds.map(async (postId: string) => {
+      const result = await db
+        .delete(posts)
+        .where(and(eq(posts.id, postId), eq(posts.user_id, userId)))
+        .returning({ id: posts.id });
+      return result[0];
+    });
+
+    const results = await Promise.all(deletePromises);
+    const successfulDeletes = results.filter(result => result !== undefined);
+
+    res.json({ 
+      message: `Successfully deleted ${successfulDeletes.length} posts`,
+      deletedCount: successfulDeletes.length,
+      requestedCount: postIds.length
+    });
+
+  } catch (error) {
+    console.error('Bulk delete posts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Delete a post
 router.delete('/:id', async (req: Request, res: Response) => {
   try {

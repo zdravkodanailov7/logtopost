@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Wand2, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import UserDropdown from '@/components/UserDropdown';
 
 interface DateNavProps {
     date: Date;
@@ -14,6 +15,11 @@ interface DateNavProps {
     showGenerateButton?: boolean;
     textSize?: 'small' | 'medium' | 'large';
     onTextSizeChange?: (size: 'small' | 'medium' | 'large') => void;
+    // Profile dropdown props
+    userEmail?: string;
+    theme?: string;
+    onToggleTheme?: () => void;
+    onLogout?: () => void;
 }
 
 export function DateNav({ 
@@ -26,7 +32,11 @@ export function DateNav({
     isGenerating = false,
     showGenerateButton = false,
     textSize = 'small',
-    onTextSizeChange
+    onTextSizeChange,
+    userEmail,
+    theme,
+    onToggleTheme,
+    onLogout
 }: DateNavProps) {
     // Format date for display (e.g., "02/12/2025")
     const formatDate = (date: Date) => {
@@ -57,7 +67,8 @@ export function DateNav({
     };
 
     return (
-        <div className="w-full border-border p-1 flex-shrink-0 flex justify-center">
+        <div className="w-full border-border p-1 flex-shrink-0 flex justify-between items-center bg-muted/50">
+            {/* Left side - Date navigation and controls */}
             <div className="flex items-center gap-1">
                 <Button
                     variant="ghost"
@@ -123,6 +134,18 @@ export function DateNav({
                     </TooltipProvider>
                 )}
             </div>
+
+            {/* Right side - Profile dropdown */}
+            {userEmail && theme && onToggleTheme && onLogout && (
+                <div className="flex items-center">
+                    <UserDropdown 
+                        userEmail={userEmail}
+                        theme={theme}
+                        onToggleTheme={onToggleTheme}
+                        onLogout={onLogout}
+                    />
+                </div>
+            )}
         </div>
     );
 } 

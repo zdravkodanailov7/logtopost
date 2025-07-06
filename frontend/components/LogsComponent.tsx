@@ -1,17 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { DateNav } from './DateNav';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalState } from '@/contexts/GlobalStateContext';
 import { getLogByDate, createLog, updateLog, DailyLog } from '@/lib/logs';
 import axios from 'axios';
-import { Button } from '@/components/ui/button';
-import { Wand2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-export default function LogsComponent() {
-  const [date, setDate] = useState(new Date());
-  const [isClient, setIsClient] = useState(false);
+interface LogsComponentProps {
+  date: Date;
+  textSize: 'small' | 'medium' | 'large';
+}
+
+export default function LogsComponent({ 
+  date, 
+  textSize
+}: LogsComponentProps) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -19,11 +22,9 @@ export default function LogsComponent() {
   const [currentLog, setCurrentLog] = useState<DailyLog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [selectedText, setSelectedText] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [textSize, setTextSize] = useState<'small' | 'medium' | 'large'>('small');
   
   const { isAuthenticated, user } = useAuth();
+  const { selectedText, setSelectedText, aiLoading, setAiLoading } = useGlobalState();
 
   // Get text size class
   const getTextSizeClass = () => {
@@ -36,23 +37,6 @@ export default function LogsComponent() {
         return 'text-base';
       default:
         return 'text-xs';
-    }
-  };
-
-  // Load text size from localStorage and save changes
-  useEffect(() => {
-    if (isClient) {
-      const savedTextSize = localStorage.getItem('text_size') as 'small' | 'medium' | 'large';
-      if (savedTextSize && ['small', 'medium', 'large'].includes(savedTextSize)) {
-        setTextSize(savedTextSize);
-      }
-    }
-  }, [isClient]);
-
-  const handleTextSizeChange = (size: 'small' | 'medium' | 'large') => {
-    setTextSize(size);
-    if (isClient) {
-      localStorage.setItem('text_size', size);
     }
   };
 
@@ -86,19 +70,9 @@ export default function LogsComponent() {
     }
   };
 
-  // Initialize client state and load saved date
-  useEffect(() => {
-    setIsClient(true);
-    // Load saved date from localStorage after hydration
-    const savedDate = localStorage.getItem('selected_date');
-    if (savedDate) {
-      setDate(new Date(savedDate));
-    }
-  }, []);
-
   // Load log when date changes or user authentication status changes
   useEffect(() => {
-    if (isAuthenticated && isClient) {
+    if (isAuthenticated) {
       loadLog(date);
     } else {
       setText('');
@@ -106,7 +80,14 @@ export default function LogsComponent() {
       setCurrentLog(null);
       setLoading(false);
     }
-  }, [date, isAuthenticated, isClient]);
+  }, [date, isAuthenticated]);
+
+  // Expose handleSendToAI function to parent
+  useEffect(() => {
+    // This is a bit of a hack, but we need to expose the function somehow
+    // In a real implementation, we'd use useImperativeHandle with forwardRef
+    (window as any).handleSendToAI = handleSendToAI;
+  }, [selectedText, isAuthenticated, currentLog]);
 
   // Auto-resize textarea when text changes or component mounts
   useEffect(() => {
@@ -167,31 +148,7 @@ export default function LogsComponent() {
     }
   };
 
-  const goToPreviousDay = () => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() - 1);
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
 
-  const goToNextDay = () => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() + 1);
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
-
-  const goToToday = () => {
-    const newDate = new Date();
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
 
   const handleSelectionChange = () => {
     const textarea = textareaRef.current;
@@ -317,18 +274,6 @@ export default function LogsComponent() {
 
   return (
     <div className="h-full flex flex-col">
-      <DateNav 
-        date={date} 
-        onPrevious={goToPreviousDay} 
-        onNext={goToNextDay} 
-        onDateClick={goToToday} 
-        onGeneratePosts={handleSendToAI}
-        isGenerateDisabled={!selectedText || aiLoading}
-        isGenerating={aiLoading}
-        showGenerateButton={true}
-        textSize={textSize}
-        onTextSizeChange={handleTextSizeChange}
-      />
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="px-[50px] lg:px-[300px] pt-[50px] lg:pt-[50px] pb-[100px] lg:pb-[200px]">
           <h1 className="text-3xl font-bold pb-[10px]">

@@ -108,15 +108,28 @@ export const togglePostUsed = async (id: string, used: boolean): Promise<UpdateP
   }
 };
 
-
-
 // Delete a post
-export const deletePost = async (id: string): Promise<{ message: string }> => {
+export const deletePost = async (postId: string): Promise<void> => {
   try {
-    const response = await api.delete(`/api/posts/${id}`);
-    return response.data;
+    await api.delete(`/api/posts/${postId}`);
   } catch (error) {
     console.error('Error deleting post:', error);
+    throw error;
+  }
+};
+
+// Bulk delete posts
+export const bulkDeletePosts = async (postIds: string[]): Promise<{ deletedCount: number; requestedCount: number }> => {
+  try {
+    const response = await api.delete('/api/posts/bulk', {
+      data: { postIds }
+    });
+    return {
+      deletedCount: response.data.deletedCount,
+      requestedCount: response.data.requestedCount
+    };
+  } catch (error) {
+    console.error('Error bulk deleting posts:', error);
     throw error;
   }
 }; 

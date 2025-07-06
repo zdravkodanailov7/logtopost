@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { DateNav } from './DateNav';
 import { useAuth } from '@/contexts/AuthContext';
-import { getPosts, Post, togglePostUsed, getPostsByDate } from '@/lib/posts';
+import { getPosts, Post, togglePostUsed, getPostsByDate, bulkDeletePosts } from '@/lib/posts';
 import { Check } from 'lucide-react';
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from './ui/button';
+import { ConfirmationDialog } from './ui/confirmation-dialog';
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,16 +20,21 @@ import {
 
 const columnHelper = createColumnHelper<Post>();
 
-export default function PostsComponent() {
+interface PostsComponentProps {
+  date?: Date;
+}
+
+export default function PostsComponent({ date = new Date() }: PostsComponentProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [date, setDate] = useState(new Date());
-  const [isClient, setIsClient] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; postId: string } | null>(null);
   const [updatingPost, setUpdatingPost] = useState<string | null>(null);
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Load posts for the selected date
   const loadPosts = async () => {
@@ -39,6 +46,8 @@ export default function PostsComponent() {
     try {
       const result = await getPostsByDate(date);
       setPosts(result.posts || []);
+      // Clear selections when loading new posts
+      setSelectedPosts(new Set());
     } catch (err) {
       console.error('Error loading posts:', err);
       setError('Failed to load posts. Please try again.');
@@ -47,24 +56,14 @@ export default function PostsComponent() {
     }
   };
 
-  // Initialize client state and load saved date
   useEffect(() => {
-    setIsClient(true);
-    // Load saved date from localStorage after hydration
-    const savedDate = localStorage.getItem('selected_date');
-    if (savedDate) {
-      setDate(new Date(savedDate));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated && isClient) {
+    if (isAuthenticated) {
       loadPosts();
     } else {
       setPosts([]);
       setLoading(false);
     }
-  }, [isAuthenticated, date, isClient]);
+  }, [isAuthenticated, date]);
 
   // Close context menu when clicking elsewhere
   useEffect(() => {
@@ -77,6 +76,47 @@ export default function PostsComponent() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenu]);
+
+  // Handle selecting/deselecting posts
+  const handleSelectPost = (postId: string) => {
+    const newSelected = new Set(selectedPosts);
+    if (newSelected.has(postId)) {
+      newSelected.delete(postId);
+    } else {
+      newSelected.add(postId);
+    }
+    setSelectedPosts(newSelected);
+  };
+
+  // Handle select all/deselect all
+  const handleSelectAll = () => {
+    if (selectedPosts.size === posts.length) {
+      setSelectedPosts(new Set());
+    } else {
+      setSelectedPosts(new Set(posts.map(post => post.id)));
+    }
+  };
+
+  // Handle bulk delete
+  const handleDeleteSelected = async () => {
+    setIsDeleting(true);
+    try {
+      const postIds = Array.from(selectedPosts);
+      const result = await bulkDeletePosts(postIds);
+      
+      // Remove deleted posts from the state
+      setPosts(prevPosts => prevPosts.filter(post => !selectedPosts.has(post.id)));
+      setSelectedPosts(new Set());
+      
+      toast.success(`Successfully deleted ${result.deletedCount} posts`);
+    } catch (error) {
+      console.error('Error deleting posts:', error);
+      toast.error('Failed to delete posts. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   // Handle toggling used status
   const handleToggleUsed = async (postId: string, currentUsed: boolean) => {
@@ -123,6 +163,32 @@ export default function PostsComponent() {
 
   // Define columns
   const columns = useMemo<ColumnDef<Post, any>[]>(() => [
+    columnHelper.display({
+      id: 'select',
+      header: ({ table }) => (
+        <div className="flex items-center">
+          <Checkbox
+            checked={selectedPosts.size === posts.length && posts.length > 0}
+            onCheckedChange={handleSelectAll}
+            aria-label="Select all posts"
+          />
+        </div>
+      ),
+      cell: ({ row }) => {
+        const post = row.original;
+        return (
+          <div className="flex items-center">
+            <Checkbox
+              checked={selectedPosts.has(post.id)}
+              onCheckedChange={() => handleSelectPost(post.id)}
+              aria-label={`Select post ${post.id}`}
+            />
+          </div>
+        );
+      },
+      size: 60,
+      enableSorting: false,
+    }),
     columnHelper.accessor('content', {
       header: 'Content',
       cell: ({ row }) => {
@@ -176,7 +242,7 @@ export default function PostsComponent() {
       size: 100,
       enableSorting: true,
     }),
-  ], []);
+  ], [selectedPosts, posts.length]);
 
   const table = useReactTable({
     data: posts,
@@ -185,32 +251,6 @@ export default function PostsComponent() {
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
-
-  const goToPreviousDay = () => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() - 1);
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
-
-  const goToNextDay = () => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() + 1);
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
-
-  const goToToday = () => {
-    const newDate = new Date();
-    setDate(newDate);
-    if (isClient) {
-      localStorage.setItem('selected_date', newDate.toISOString());
-    }
-  };
 
   // Don't show anything if not authenticated
   if (!isAuthenticated) {
@@ -223,14 +263,25 @@ export default function PostsComponent() {
 
   return (
     <div className="h-full flex flex-col">
-      <DateNav 
-        date={date} 
-        onPrevious={goToPreviousDay} 
-        onNext={goToNextDay} 
-        onDateClick={goToToday}
-        showGenerateButton={false}
-      />
-      
+      {/* Info */}
+      <div className="py-4 pl-4 h-10 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          {selectedPosts.size > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              className="text-xs bg-secondary h-6"
+            >
+              Delete Selected ({selectedPosts.size})
+            </Button>
+          )}
+        </div>
+        <span className="text-sm text-muted-foreground pr-4">
+          {posts.length} posts
+        </span>
+      </div>
+
       {/* Error message */}
       {error && (
         <div className="mx-6 mt-4 p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-lg">
@@ -273,9 +324,10 @@ export default function PostsComponent() {
                     {headerGroup.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="text-left px-6 py-1 text-xs font-medium text-muted-foreground uppercase"
+                        className={`text-left ${header.id === 'select' ? 'px-4' : 'pl-2 pr-6'} py-2 text-xs font-medium text-muted-foreground uppercase bg-background`}
                         style={{ 
-                          width: header.id === 'content' ? '85%' : 
+                          width: header.id === 'select' ? '20px' :
+                                 header.id === 'content' ? '85%' : 
                                  header.id === 'used' ? '15%' : 
                                  header.getSize() 
                         }}
@@ -308,10 +360,10 @@ export default function PostsComponent() {
                     key={row.id}
                     className={`border-b border-border transition-colors hover:bg-muted/30 ${
                       index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
-                    }`}
+                    } ${selectedPosts.has(row.original.id) ? 'bg-primary/5' : ''}`}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-6 py-2">
+                      <td key={cell.id} className={`${cell.column.id === 'select' ? 'px-4' : 'pr-6 pl-2'} py-2`}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
@@ -347,6 +399,18 @@ export default function PostsComponent() {
           </button>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDeleteSelected}
+        title="Delete Selected Posts"
+        message={`Are you sure you want to delete ${selectedPosts.size} selected post${selectedPosts.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+        confirmText="Delete"
+        confirmVariant="destructive"
+        isLoading={isDeleting}
+      />
     </div>
   );
 } 

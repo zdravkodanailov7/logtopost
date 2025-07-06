@@ -1,5 +1,6 @@
 import { Button } from './button';
 import { RefreshCw } from 'lucide-react';
+import { useEffect } from 'react';
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -22,6 +23,24 @@ export function ConfirmationDialog({
   confirmVariant = 'default',
   isLoading = false
 }: ConfirmationDialogProps) {
+  // Handle keyboard events
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' && !isLoading) {
+        event.preventDefault();
+        onConfirm();
+      } else if (event.key === 'Escape' && !isLoading) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isLoading, onConfirm, onClose]);
+
   if (!isOpen) return null;
 
   return (

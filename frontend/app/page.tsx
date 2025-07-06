@@ -416,9 +416,16 @@ export default function Home() {
           <div className="font-semibold text-lg">
             Log to Post
           </div>
-          <Button variant="ghost" onClick={() => router.push('/login')} className="cursor-pointer">
-            Log In
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => router.push('/login')} className="cursor-pointer">
+              Log In
+            </Button>
+            {isAuthenticated && (
+              <Button onClick={() => router.push('/dashboard')} className="cursor-pointer">
+                Dashboard
+              </Button>
+            )}
+          </div>
         </div>
       </nav>
       

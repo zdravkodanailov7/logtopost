@@ -24,3 +24,5 @@ A trial is cancelled if the subscription_status is 'cancelled' and the trial_end
 - Use `PLAN_OPTIONS.basic`, `PLAN_OPTIONS.pro`, `PLAN_OPTIONS.advanced`
 - Access price as: `plan.currency + plan.price` (e.g., "£7.99")
 - Never hardcode plan data - always use the centralized constants 
+
+include credentials in api requests

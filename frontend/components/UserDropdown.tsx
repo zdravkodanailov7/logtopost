@@ -31,7 +31,6 @@ export default function UserDropdown({
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
-                side="right"
                 align="start"
                 className="w-44"
             >
