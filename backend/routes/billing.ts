@@ -506,6 +506,13 @@ router.post('/cancel-subscription', async (req: Request, res: Response) => {
 
     // Handle trial cancellation
     if (user.subscription_status === 'trial') {
+      // Cancel the Stripe subscription to prevent future charges
+      if (user.stripe_subscription_id) {
+        console.log('🚫 Cancelling Stripe subscription for trial user:', userId, 'subscription:', user.stripe_subscription_id);
+        await stripe.subscriptions.cancel(user.stripe_subscription_id);
+        console.log('✅ Stripe subscription cancelled for trial user:', userId);
+      }
+
       // Immediate cancellation - set trial_ends_at to now and mark as having had trial
       await db
         .update(users)
