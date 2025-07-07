@@ -7,22 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from "sonner";
 import { ConfirmationDialog } from './ui/confirmation-dialog';
 
-// Default prompt from the backend
-const DEFAULT_PROMPT = `You are writing standalone tweets for a developer building a SaaS app. Your tone is dry, sharp, and honest. No fluff. No soft reflections. Just real updates, observations, and rants.
-
-You write like you're texting another dev — direct, clear, no filler.
-
-Don’t write tweets that feel like broken fragments or bullet points.
-If two or three related thoughts belong together, combine them into one tweet.
-Use up to 280 characters when it makes sense. Each tweet should feel like a complete thought, not a half-sentence.
-
-Avoid fancy punctuation — no dashes, no semicolons, no colons. Use lowercase unless it’s a proper noun.
-No British filler (e.g. “bloody”, “folks”). Avoid the word “apparently.” Swearing is fine but only if it hits.
-
-No hashtags. No threads. No promotional tone.
-
-Generate between 3 and 6 tweets per generation. Each one should stand alone.`;
-
 export function ProfileComponent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -42,7 +26,7 @@ export function ProfileComponent() {
     try {
       const data = await getUserProfile();
       setProfile(data);
-      setCustomPrompt(data.custom_prompt || DEFAULT_PROMPT);
+      setCustomPrompt(data.custom_prompt || '');
     } catch (error) {
       console.error('Error fetching profile:', error);
       toast.error('Failed to load profile');
@@ -54,12 +38,12 @@ export function ProfileComponent() {
   const saveProfile = async () => {
     setIsSaving(true);
     try {
-      const promptToSave = customPrompt.trim() === DEFAULT_PROMPT ? null : customPrompt.trim();
+      const promptToSave = customPrompt.trim() === '' ? null : customPrompt.trim();
       const updatedProfile = await updateUserProfile({
         custom_prompt: promptToSave,
       });
       setProfile(updatedProfile);
-      toast.success('Profile updated successfully!');
+      toast.success('Personality settings updated successfully!');
     } catch (error) {
       console.error('Error saving profile:', error);
       toast.error('Failed to save profile');
@@ -69,7 +53,7 @@ export function ProfileComponent() {
   };
 
   const resetToDefault = () => {
-    setCustomPrompt(DEFAULT_PROMPT);
+    setCustomPrompt('');
   };
 
   const handleDeleteAccount = async () => {
@@ -114,31 +98,36 @@ export function ProfileComponent() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2 text-foreground">AI Prompt Settings</h1>
+        <h1 className="text-2xl font-bold mb-2 text-foreground">AI Personality Settings</h1>
         <p className="text-muted-foreground">
-          Customize how the AI generates posts from your daily logs.
+          Fine-tune the personality of your AI-generated posts. This gets added to the base prompt to adjust the tone and style.
         </p>
       </div>
 
-      {/* Prompt Editor */}
+      {/* Custom Personality Tweaks */}
       <div className="mb-6">
         <label className="block font-semibold mb-2 text-foreground">
-          Prompt
+          Personality Tweaks
+          <span className="text-sm font-normal text-muted-foreground ml-2">(Optional)</span>
         </label>
+        <p className="text-sm text-muted-foreground mb-3">
+          Add personality adjustments like "be more casual", "add humor", "be more technical", etc. 
+          This gets appended to the base prompt to customize the AI's personality.
+        </p>
+        
         <div className="relative">
           <textarea
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="Enter your AI prompt here..."
-            maxLength={2000}
-            className="w-full h-[500px] p-4 border border-border rounded-lg resize-none font-mono text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none"
-            style={{ fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace' }}
+            placeholder="e.g., be more casual, add humor when appropriate, focus on technical insights"
+            maxLength={300}
+            className="w-full h-32 p-4 border border-border rounded-lg resize-none text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
         
         <div className="flex items-center justify-between mt-2">
-          <p className={`text-xs ${customPrompt.length > 1800 ? 'text-yellow-500' : customPrompt.length === 2000 ? 'text-red-500' : 'text-muted-foreground'}`}>
-            {customPrompt.length} / 2000 characters
+          <p className={`text-xs ${customPrompt.length > 250 ? 'text-yellow-500' : customPrompt.length === 300 ? 'text-red-500' : 'text-muted-foreground'}`}>
+            {customPrompt.length} / 300 characters
           </p>
         </div>
       </div>
@@ -150,7 +139,7 @@ export function ProfileComponent() {
           disabled={isSaving}
           className="flex-1"
         >
-          {isSaving ? 'Saving...' : 'Save Changes'}
+          {isSaving ? 'Saving...' : 'Save Personality Settings'}
         </Button>
         
         <Button
@@ -158,7 +147,7 @@ export function ProfileComponent() {
           onClick={resetToDefault}
           disabled={isSaving}
         >
-          Reset to Default
+          Clear Tweaks
         </Button>
       </div>
 

@@ -4,25 +4,21 @@
 Always use these exact plan details when generating or modifying code:
 
 ### Current Plans:
-- **Basic Plan**: £7.99/month, 50 generations/month, Core features
-- **Pro Plan**: £14.99/month, 150 generations/month, Custom AI prompts (POPULAR)
-- **Advanced Plan**: £24.99/month, 500 generations/month, Custom AI prompts
+- **Premium Plan**: £9.99/month, 100 generations/month, Custom AI prompts (Crown icon, purple color)
 
 ### Trial Plan:
 - **Free Trial**: 10 generations total, 7 days duration
 
 ### Plan Colors:
-- Basic: text-green-500 (Package icon)
-- Pro: text-purple-500 (Shield icon)
-- Advanced: text-amber-500 (Crown icon)
+- Premium: text-purple-500 (Crown icon)
 
 ### Import Statement:
 Always import plans from: `import { PLAN_OPTIONS } from '@/lib/plans';`
 A trial is cancelled if the subscription_status is 'cancelled' and the trial_ends_at date has passed
 
 ### Usage:
-- Use `PLAN_OPTIONS.basic`, `PLAN_OPTIONS.pro`, `PLAN_OPTIONS.advanced`
-- Access price as: `plan.currency + plan.price` (e.g., "£7.99")
+- Use `PLAN_OPTIONS.premium`
+- Access price as: `plan.currency + plan.price` (e.g., "£9.99")
 - Never hardcode plan data - always use the centralized constants 
 
 include credentials in api requests

@@ -10,6 +10,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: text('password').notNull(),
   custom_prompt: text('custom_prompt'), // For user's custom AI prompt
+  is_admin: boolean('is_admin').default(false).notNull(), // Admin flag for unlimited access
   
   // Stripe & Subscription fields
   stripe_customer_id: varchar('stripe_customer_id', { length: 255 }),

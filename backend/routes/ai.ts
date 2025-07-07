@@ -17,22 +17,53 @@ const openai = new OpenAI({
 });
 
 // Default prompt fallback
-const DEFAULT_PROMPT = `You are writing standalone tweets for a developer building a SaaS app. Your tone is dry, sharp, and honest. No fluff. No soft reflections. Just real updates, observations, and rants.
+const DEFAULT_PROMPT = `you're writing standalone tweets for a dev building a SaaS app. tone is dry, direct, honest. no filler, no analogies, no rhetorical questions, no "considering" or "hope." only say what you actually did or realised. don't invent details or assume times you didn't mention.
 
-You write like you're texting another dev — direct, clear, no filler.
+style: texting another dev. use lowercase unless it's a proper noun (python, stripe). avoid fancy punctuation (no dashes, semicolons, colons).
 
-Don’t write tweets that feel like broken fragments or bullet points.
-If two or three related thoughts belong together, combine them into one tweet.
-Use up to 280 characters when it makes sense. Each tweet should feel like a complete thought, not a half-sentence.
+tweets should feel complete—combine tightly related points into one tweet. if you only have one thought, say it in 1–2 sentences. if you have two, still keep it under 280 characters.
 
-Avoid fancy punctuation — no dashes, no semicolons, no colons. Use lowercase unless it’s a proper noun.
-No British filler (e.g. “bloody”, “folks”). Avoid the word “apparently.” Swearing is fine but only if it hits.
+swearing is allowed but only if it lands. no British slang ("bloody," "folks," etc.). no hashtags. no threads. no promo.
 
-No hashtags. No threads. No promotional tone.
+generate 4–6 tweets per run. each must stand alone and contain only real actions or observations the user provided.`;
 
-Generate between 3 and 6 tweets per generation. Each one should stand alone.`;
-
-
+// Sanitize user's custom prompt to prevent prompt injection
+const sanitizeCustomPrompt = (customPrompt: string | null): string => {
+  if (!customPrompt || customPrompt.trim() === '') {
+    return '';
+  }
+  
+  // Remove potentially harmful instructions
+  const dangerousPatterns = [
+    /ignore\s+(?:previous|above|all)\s+instructions?/gi,
+    /forget\s+(?:previous|above|all)\s+instructions?/gi,
+    /new\s+instructions?/gi,
+    /system\s*:/gi,
+    /assistant\s*:/gi,
+    /user\s*:/gi,
+    /\{[^}]*\}/g, // Remove JSON-like structures
+    /return\s+(?:json|response|format)/gi,
+    /respond\s+(?:with|as|in)/gi,
+    /output\s+(?:json|format)/gi,
+  ];
+  
+  let sanitized = customPrompt.trim();
+  
+  // Remove dangerous patterns
+  dangerousPatterns.forEach(pattern => {
+    sanitized = sanitized.replace(pattern, '');
+  });
+  
+  // Limit length and clean up
+  sanitized = sanitized.slice(0, 300).trim();
+  
+  // Ensure it ends with a period for proper sentence structure
+  if (sanitized && !sanitized.endsWith('.') && !sanitized.endsWith('!') && !sanitized.endsWith('?')) {
+    sanitized += '.';
+  }
+  
+  return sanitized;
+};
 
 // POST /api/ai/generate-posts
 router.post('/generate-posts', checkGenerationLimit, async (req: Request, res: Response) => {
@@ -82,15 +113,20 @@ router.post('/generate-posts', checkGenerationLimit, async (req: Request, res: R
 
     if (selectionStart === undefined || selectionEnd === undefined) {
       console.log('❌ [AI Route] Missing selection positions - returning 400');
-      return res.status(400).json({ error: 'Selection positions are required' });
+      res.status(400).json({ error: 'Selection positions are required' });
+      return;
     }
 
-    // Use custom prompt if available, otherwise use default
-    const basePrompt = user?.custom_prompt || DEFAULT_PROMPT;
+    // Always use default prompt + safely append user's custom prompt
+    const sanitizedCustomPrompt = sanitizeCustomPrompt(user?.custom_prompt);
+    const basePrompt = sanitizedCustomPrompt 
+      ? `${DEFAULT_PROMPT}\n\nadditional personality note: ${sanitizedCustomPrompt}`
+      : DEFAULT_PROMPT;
     
     console.log('🤖 [AI Route] Using prompt:', {
-      isCustomPrompt: !!user?.custom_prompt,
-      promptLength: basePrompt.length
+      hasCustomPrompt: !!user?.custom_prompt,
+      customPromptLength: sanitizedCustomPrompt.length,
+      isPromptSanitized: sanitizedCustomPrompt !== user?.custom_prompt
     });
 
     // Build the complete prompt with log text and JSON format instructions
@@ -202,31 +238,39 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
       }
     }
 
-    // After successful generation, increment usage
-    if (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') {
-      await db
-        .update(users)
-        .set({ 
-          trial_generations_used: user.trial_generations_used + 1,
-          updated_at: new Date()
-        })
-        .where(eq(users.id, userId));
-    } else {
-      await db
-        .update(users)
-        .set({ 
-          generations_used_this_month: user.generations_used_this_month + 1,
-          updated_at: new Date()
-        })
-        .where(eq(users.id, userId));
+    // After successful generation, increment usage (skip for admin users)
+    if (!user.is_admin) {
+      if (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') {
+        await db
+          .update(users)
+          .set({ 
+            trial_generations_used: user.trial_generations_used + 1,
+            updated_at: new Date()
+          })
+          .where(eq(users.id, userId));
+      } else {
+        await db
+          .update(users)
+          .set({ 
+            generations_used_this_month: user.generations_used_this_month + 1,
+            updated_at: new Date()
+          })
+          .where(eq(users.id, userId));
+      }
     }
 
-    // Calculate current usage for response
-    const currentUsage = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled')
-      ? user.trial_generations_used + 1 
-      : user.generations_used_this_month + 1;
-
-    const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
+    // Calculate current usage for response (admin users show unlimited)
+    let currentUsage, limit;
+    
+    if (user.is_admin) {
+      currentUsage = 0;
+      limit = 999999; // Unlimited for admins
+    } else {
+      currentUsage = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled')
+        ? user.trial_generations_used + 1 
+        : user.generations_used_this_month + 1;
+      limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
+    }
 
     res.json({
       tweets: parsedResponse.tweets,
@@ -256,7 +300,8 @@ router.get('/post-generations/:dailyLogId', async (req: Request, res: Response) 
     const userId = authenticateRequest(req);
     
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
 
     const { dailyLogId } = req.params;
@@ -281,7 +326,8 @@ router.get('/posts/:generationId', async (req: Request, res: Response) => {
     const userId = authenticateRequest(req);
     
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
 
     const { generationId } = req.params;

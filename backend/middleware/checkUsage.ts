@@ -37,6 +37,7 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
     console.log('👤 [checkGenerationLimit] User found:', {
       id: user.id,
       email: user.email,
+      is_admin: user.is_admin,
       subscription_status: user.subscription_status,
       plan_type: user.plan_type,
       trial_ends_at: user.trial_ends_at,
@@ -44,6 +45,14 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       generations_used_this_month: user.generations_used_this_month,
       current_time: new Date().toISOString()
     });
+
+    // Bypass all limits for admin users
+    if (user.is_admin) {
+      console.log('👑 [checkGenerationLimit] Admin user detected - bypassing all limits');
+      (req as any).user = user;
+      next();
+      return;
+    }
 
     // Check if trial has expired (including cancelled trials)
     const isTrialExpired = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
