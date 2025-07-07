@@ -185,7 +185,7 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
       ],
       mode: 'subscription',
       success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/pricing?canceled=true`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}`,
       metadata: {
         userId: user.id,
         planType: 'premium',
