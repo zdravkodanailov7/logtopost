@@ -121,10 +121,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Check if user can edit custom prompt (Pro or Advanced with active subscription)
-  const canEditPrompt = !!(user && 
-    user.subscription_status === 'active' && 
-    ['pro', 'advanced'].includes(user.plan_type || ''));
+  // Check if user can edit custom prompt (active subscription)
+  const canEditPrompt = !!(user && user.subscription_status === 'active');
 
   const refreshUser = async () => {
     try {

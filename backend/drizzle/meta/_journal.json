@@ -99,6 +99,20 @@
       "when": 1751923242593,
       "tag": "0013_famous_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1752014057264,
+      "tag": "0014_lonely_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1752184431639,
+      "tag": "0015_smooth_black_tom",
+      "breakpoints": true
     }
   ]
 }

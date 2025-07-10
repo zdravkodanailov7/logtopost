@@ -5,9 +5,9 @@ export interface User {
   email: string;
   created_at: string;
   subscription_status?: string;
-  plan_type?: string;
-  trial_ends_at?: string;
-  subscription_ends_at?: string;
+  generations_used_this_month?: number;
+  is_admin?: boolean;
+  custom_prompt?: string;
 }
 
 export interface AuthResponse {

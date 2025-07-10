@@ -75,9 +75,6 @@ router.post('/register', async (req: Request, res: Response) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       subscription_status: hasHadTrialBefore ? 'cancelled' : 'trial',  // No trial if they've had one before
-      plan_type: hasHadTrialBefore ? 'premium' : 'trial',             // Set appropriate plan type
-      has_had_trial: hasHadTrialBefore,                               // Mark if they've had trial before
-      trial_ends_at: hasHadTrialBefore ? null : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now, or null if no trial
     }).returning({ id: users.id, email: users.email, created_at: users.created_at });
 
     // Generate JWT token
@@ -101,7 +98,7 @@ router.post('/register', async (req: Request, res: Response) => {
         id: newUser.id,
         email: newUser.email,
         created_at: newUser.created_at,
-        has_had_trial: hasHadTrialBefore
+        subscription_status: hasHadTrialBefore ? 'cancelled' : 'trial'
       },
       token
     });
@@ -186,9 +183,9 @@ router.get('/me', async (req: Request, res: Response) => {
       created_at: users.created_at,
       updated_at: users.updated_at,
       subscription_status: users.subscription_status,
-      plan_type: users.plan_type,
-      trial_ends_at: users.trial_ends_at,
-      subscription_ends_at: users.subscription_ends_at
+      generations_used_this_month: users.generations_used_this_month,
+      is_admin: users.is_admin,
+      custom_prompt: users.custom_prompt
     }).from(users).where(eq(users.id, decoded.userId));
 
     if (!user) {

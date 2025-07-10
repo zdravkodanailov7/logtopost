@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { users, posts, postGenerations, dailyLogs } from '../schema';
+import { users, posts, dailyLogs } from '../schema';
 import { verifyToken } from '../utils/auth';
 
 const router = express.Router();
@@ -80,87 +80,11 @@ router.put('/profile', async (req: Request, res: Response) => {
   }
 });
 
-// Get user usage stats
-router.get('/usage', async (req: Request, res: Response) => {
-  try {
-    const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const decoded = verifyToken(token);
-    if (!decoded) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-
-    const [user] = await db
-      .select({
-        id: users.id,
-        subscription_status: users.subscription_status,
-        plan_type: users.plan_type,
-        intended_plan_type: users.intended_plan_type,
-        has_had_trial: users.has_had_trial,
-        generations_used_this_month: users.generations_used_this_month,
-        trial_generations_used: users.trial_generations_used,
-        trial_ends_at: users.trial_ends_at,
-        subscription_ends_at: users.subscription_ends_at,
-      })
-      .from(users)
-      .where(eq(users.id, decoded.userId))
-      .limit(1);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Calculate usage and limits (GBP pricing structure)
-    const PLAN_LIMITS = {
-      trial: 10,   // 7-day trial
-      basic: 50,   // £7.99/month
-      pro: 150,    // £14.99/month
-      advanced: 500 // £24.99/month
-    };
-
-    const PLAN_PRICING = {
-      basic: { price: 7.99, currency: 'GBP' },
-      pro: { price: 14.99, currency: 'GBP' },
-      advanced: { price: 24.99, currency: 'GBP' }
-    };
-
-    const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
-    const used = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
-      ? user.trial_generations_used 
-      : user.generations_used_this_month;
-    const remaining = limit - used;
-
-    // Check if trial expired (including cancelled trials)
-    const trialExpired = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
-      && user.trial_ends_at && new Date() > user.trial_ends_at;
-
-    res.json({
-      plan_type: user.plan_type,
-      subscription_status: user.subscription_status,
-      intended_plan_type: user.intended_plan_type,
-      has_had_trial: user.has_had_trial,
-      trial_ends_at: user.trial_ends_at,
-      subscription_ends_at: user.subscription_ends_at,
-      trial_expired: trialExpired,
-      usage: {
-        used,
-        limit,
-        remaining,
-        percentage: Math.round((used / limit) * 100)
-      },
-      pricing: PLAN_PRICING,
-      upgrade_required: remaining <= 0 || trialExpired
-    });
-
-  } catch (error) {
-    console.error('Usage fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch usage' });
-  }
-});
+// Get user usage stats - DISABLED: Schema fields don't match current database
+// router.get('/usage', async (req: Request, res: Response) => {
+//   // This endpoint is disabled due to schema mismatch
+//   res.status(501).json({ error: 'Usage endpoint not implemented' });
+// });
 
 // Delete user account and all related data
 router.delete('/account', async (req: Request, res: Response) => {
@@ -184,7 +108,6 @@ router.delete('/account', async (req: Request, res: Response) => {
         id: users.id,
         email: users.email,
         stripe_customer_id: users.stripe_customer_id,
-        stripe_subscription_id: users.stripe_subscription_id,
         subscription_status: users.subscription_status
       })
       .from(users)
@@ -195,23 +118,36 @@ router.delete('/account', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Cancel Stripe subscription and delete customer if exists
-    if (user.stripe_customer_id || user.stripe_subscription_id) {
+    // Cancel ALL Stripe subscriptions and delete customer if exists
+    if (user.stripe_customer_id) {
       try {
         // Import stripe here to avoid dependency issues if not configured
         const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
         
-        // Cancel subscription first if it exists and is active
-        if (user.stripe_subscription_id && user.subscription_status === 'active') {
-          await stripe.subscriptions.cancel(user.stripe_subscription_id);
-          console.log(`✅ Cancelled Stripe subscription: ${user.stripe_subscription_id}`);
+        console.log(`🔍 Checking for all subscriptions for customer: ${user.stripe_customer_id}`);
+        
+        // List all subscriptions for this customer
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripe_customer_id,
+          limit: 100 // Get up to 100 subscriptions (should be more than enough)
+        });
+        
+        console.log(`📋 Found ${subscriptions.data.length} subscriptions for customer`);
+        
+        // Cancel each active subscription
+        for (const subscription of subscriptions.data) {
+          if (subscription.status === 'active' || subscription.status === 'trialing' || subscription.status === 'past_due') {
+            console.log(`🚫 Cancelling subscription: ${subscription.id} (status: ${subscription.status})`);
+            await stripe.subscriptions.cancel(subscription.id);
+            console.log(`✅ Cancelled subscription: ${subscription.id}`);
+          } else {
+            console.log(`⚠️ Skipping subscription: ${subscription.id} (status: ${subscription.status})`);
+          }
         }
         
         // Delete the entire Stripe customer (this also deletes all associated data)
-        if (user.stripe_customer_id) {
-          await stripe.customers.del(user.stripe_customer_id);
-          console.log(`✅ Deleted Stripe customer: ${user.stripe_customer_id}`);
-        }
+        await stripe.customers.del(user.stripe_customer_id);
+        console.log(`✅ Deleted Stripe customer: ${user.stripe_customer_id}`);
         
       } catch (stripeError) {
         console.error('❌ Error cleaning up Stripe data:', stripeError);
@@ -220,44 +156,52 @@ router.delete('/account', async (req: Request, res: Response) => {
     }
 
     // Delete all related data in the correct order
-    // 1. Delete posts
-    const deletedPosts = await db
-      .delete(posts)
-      .where(eq(posts.user_id, userId))
-      .returning({ id: posts.id });
+    console.log(`🗑️ Starting data deletion for user ${user.email} (${userId})`);
+    
+    let deletedCounts = {
+      posts: 0,
+      logs: 0,
+      user: 0
+    };
 
-    // 2. Delete post generations
-    const deletedGenerations = await db
-      .delete(postGenerations)
-      .where(eq(postGenerations.user_id, userId))
-      .returning({ id: postGenerations.id });
+    try {
+      // 1. Delete posts
+      console.log('🗑️ Deleting posts...');
+      await db.delete(posts).where(eq(posts.user_id, userId));
+      console.log('✅ Posts deleted');
+      deletedCounts.posts = 1; // We can't get exact count without returning, but operation succeeded
+    } catch (error) {
+      console.error('⚠️ Error deleting posts:', error);
+      // Continue with deletion
+    }
 
-    // 3. Delete daily logs
-    const deletedLogs = await db
-      .delete(dailyLogs)
-      .where(eq(dailyLogs.user_id, userId))
-      .returning({ id: dailyLogs.id });
+    try {
+      // 2. Delete daily logs
+      console.log('🗑️ Deleting daily logs...');
+      await db.delete(dailyLogs).where(eq(dailyLogs.user_id, userId));
+      console.log('✅ Daily logs deleted');
+      deletedCounts.logs = 1;
+    } catch (error) {
+      console.error('⚠️ Error deleting daily logs:', error);
+      // Continue with deletion
+    }
 
-    // 4. Finally delete the user
-    const deletedUser = await db
-      .delete(users)
-      .where(eq(users.id, userId))
-      .returning({ id: users.id, email: users.email });
+    try {
+      // 3. Finally delete the user
+      console.log('🗑️ Deleting user...');
+      await db.delete(users).where(eq(users.id, userId));
+      console.log('✅ User deleted');
+      deletedCounts.user = 1;
+    } catch (error) {
+      console.error('❌ Error deleting user:', error);
+      throw error; // This is critical, so we should throw
+    }
 
-    console.log(`Account deletion completed for user ${user.email}:`, {
-      posts: deletedPosts.length,
-      generations: deletedGenerations.length,
-      logs: deletedLogs.length,
-      user: deletedUser.length
-    });
+    console.log(`✅ Account deletion completed for user ${user.email}:`, deletedCounts);
 
     res.json({ 
       message: 'Account deleted successfully',
-      deleted: {
-        posts: deletedPosts.length,
-        generations: deletedGenerations.length,
-        logs: deletedLogs.length
-      }
+      deleted: deletedCounts
     });
 
   } catch (error) {

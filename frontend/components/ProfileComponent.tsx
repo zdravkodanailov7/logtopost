@@ -23,33 +23,34 @@ export function ProfileComponent() {
   }, [isAuthenticated]);
 
   const fetchProfile = async () => {
-    try {
-      const data = await getUserProfile();
+    const data = await getUserProfile();
+    if (data) {
       setProfile(data);
       setCustomPrompt(data.custom_prompt || '');
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+    } else {
+      console.error('Error fetching profile: No data returned');
       toast.error('Failed to load profile');
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
 
   const saveProfile = async () => {
     setIsSaving(true);
-    try {
-      const promptToSave = customPrompt.trim() === '' ? null : customPrompt.trim();
-      const updatedProfile = await updateUserProfile({
-        custom_prompt: promptToSave,
-      });
-      setProfile(updatedProfile);
+    
+    const promptToSave = customPrompt.trim() === '' ? null : customPrompt.trim();
+    const result = await updateUserProfile({
+      custom_prompt: promptToSave,
+    });
+    
+    if (result.success && result.data) {
+      setProfile(result.data);
       toast.success('Personality settings updated successfully!');
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      toast.error('Failed to save profile');
-    } finally {
-      setIsSaving(false);
+    } else {
+      console.error('Error saving profile:', result.error);
+      toast.error(result.error || 'Failed to save profile');
     }
+    
+    setIsSaving(false);
   };
 
   const resetToDefault = () => {
@@ -58,20 +59,22 @@ export function ProfileComponent() {
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
-    try {
-      await deleteAccount();
+    
+    const result = await deleteAccount();
+    
+    if (result.success) {
       toast.success('Account deleted successfully');
       // Clear local storage and redirect to home
       localStorage.removeItem('auth_token');
       logout();
       window.location.href = '/';
-    } catch (error) {
-      console.error('Error deleting account:', error);
-      toast.error('Failed to delete account');
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteDialog(false);
+    } else {
+      console.error('Error deleting account:', result.error);
+      toast.error(result.error || 'Failed to delete account');
     }
+    
+    setIsDeleting(false);
+    setShowDeleteDialog(false);
   };
 
   // Don't show anything if not authenticated

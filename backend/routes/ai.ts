@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { db } from '../db';
-import { posts, users, postGenerations } from '../schema';
+import { posts, users } from '../schema';
 import { authenticateRequest, verifyToken } from '../utils/auth';
 import { checkGenerationLimit, PLAN_LIMITS } from '../middleware/checkUsage';
 import { eq } from 'drizzle-orm';
@@ -207,19 +207,7 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
       }
     }
 
-    // Create a post generation record to group the generated posts
-    const [postGeneration] = await db
-      .insert(postGenerations)
-      .values({
-        user_id: userId,
-        daily_log_id: dailyLogId,
-        selected_text: logText,
-        selection_start: selectionStart,
-        selection_end: selectionEnd,
-      })
-      .returning();
-
-    // Save generated posts to database linked to the post generation
+    // Save generated posts to database with selection metadata
     const savedPosts = [];
     if (parsedResponse.tweets && Array.isArray(parsedResponse.tweets)) {
       for (const tweetContent of parsedResponse.tweets) {
@@ -228,9 +216,11 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
           .values({
             user_id: userId,
             content: tweetContent,
+            selected_text: logText,
+            selection_start: selectionStart,
+            selection_end: selectionEnd,
             used: false, // New posts start as unused
             daily_log_id: dailyLogId || null,
-            post_generation_id: postGeneration.id,
           })
           .returning();
         
@@ -240,23 +230,13 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
 
     // After successful generation, increment usage (skip for admin users)
     if (!user.is_admin) {
-      if (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') {
-        await db
-          .update(users)
-          .set({ 
-            trial_generations_used: user.trial_generations_used + 1,
-            updated_at: new Date()
-          })
-          .where(eq(users.id, userId));
-      } else {
-        await db
-          .update(users)
-          .set({ 
-            generations_used_this_month: user.generations_used_this_month + 1,
-            updated_at: new Date()
-          })
-          .where(eq(users.id, userId));
-      }
+      await db
+        .update(users)
+        .set({ 
+          generations_used_this_month: user.generations_used_this_month + 1,
+          updated_at: new Date()
+        })
+        .where(eq(users.id, userId));
     }
 
     // Calculate current usage for response (admin users show unlimited)
@@ -266,23 +246,20 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
       currentUsage = 0;
       limit = 999999; // Unlimited for admins
     } else {
-      currentUsage = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled')
-        ? user.trial_generations_used + 1 
-        : user.generations_used_this_month + 1;
-      limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
+      currentUsage = user.generations_used_this_month + 1;
+      const isActive = user.subscription_status === 'active';
+      limit = isActive ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
     }
 
     res.json({
       tweets: parsedResponse.tweets,
       saved_posts: savedPosts,
-      post_generation: postGeneration,
       message: `Generated and saved ${savedPosts.length} posts`,
       used_custom_prompt: !!user?.custom_prompt,
       // Include usage info in response
       usage: {
         used: currentUsage,
         limit: limit,
-        plan: user.plan_type,
         subscription_status: user.subscription_status,
         remaining: limit - currentUsage
       }
@@ -294,56 +271,7 @@ Return the response as a JSON array of strings, where each string is a tweet. Ex
   }
 });
 
-// GET /api/ai/post-generations/:dailyLogId - Get all post generations for a log
-router.get('/post-generations/:dailyLogId', async (req: Request, res: Response) => {
-  try {
-    const userId = authenticateRequest(req);
-    
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
-    const { dailyLogId } = req.params;
-
-    const generations = await db
-      .select()
-      .from(postGenerations)
-      .where(eq(postGenerations.daily_log_id, dailyLogId))
-      .orderBy(postGenerations.created_at);
-
-    res.json({ generations });
-
-  } catch (error) {
-    console.error('Error fetching post generations:', error);
-    res.status(500).json({ error: 'Failed to fetch post generations' });
-  }
-});
-
-// GET /api/ai/posts/:generationId - Get all posts for a specific generation
-router.get('/posts/:generationId', async (req: Request, res: Response) => {
-  try {
-    const userId = authenticateRequest(req);
-    
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
-    const { generationId } = req.params;
-
-    const generationPosts = await db
-      .select()
-      .from(posts)
-      .where(eq(posts.post_generation_id, generationId))
-      .orderBy(posts.created_at);
-
-    res.json({ posts: generationPosts });
-
-  } catch (error) {
-    console.error('Error fetching posts for generation:', error);
-    res.status(500).json({ error: 'Failed to fetch posts' });
-  }
-});
+// These endpoints are no longer needed since we simplified the schema
+// Posts are now directly linked to daily logs instead of post generations
 
 export default router; 

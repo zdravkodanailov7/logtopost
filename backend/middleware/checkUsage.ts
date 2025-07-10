@@ -6,7 +6,7 @@ import { authenticateRequest } from '../utils/auth';
 
 // Plan limits configuration (updated to match new plan structure)
 const PLAN_LIMITS = {
-  trial: 10, // 10 generations during 7-day trial
+  trial: 10, // 10 generations during trial
   premium: 100, // £9.99/month - 100 generations
 };
 
@@ -39,9 +39,6 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       email: user.email,
       is_admin: user.is_admin,
       subscription_status: user.subscription_status,
-      plan_type: user.plan_type,
-      trial_ends_at: user.trial_ends_at,
-      trial_generations_used: user.trial_generations_used,
       generations_used_this_month: user.generations_used_this_month,
       current_time: new Date().toISOString()
     });
@@ -54,38 +51,12 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       return;
     }
 
-    // Check if trial has expired (including cancelled trials)
-    const isTrialExpired = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
-      && user.trial_ends_at && new Date() > user.trial_ends_at;
-    
-    console.log('📅 [checkGenerationLimit] Trial expiry check:', {
-      isTrialStatus: user.subscription_status === 'trial' || user.subscription_status === 'cancelled',
-      trial_ends_at: user.trial_ends_at,
-      current_time: new Date(),
-      isTrialExpired
-    });
-    
-    if (isTrialExpired) {
-      console.log('🚫 [checkGenerationLimit] Trial expired - returning 403');
-      res.status(403).json({ 
-        error: 'Trial expired', 
-        message: 'Your trial has expired. Please upgrade to continue generating posts.',
-        upgrade_required: true,
-        pricing: {
-          premium: '£9.99/month for 100 generations'
-        }
-      });
-      return;
-    }
-
-    // Check if subscription is inactive (but allow cancelled trials until they expire)
-    const isSubscriptionInactive = user.subscription_status === 'past_due' || 
-        (user.subscription_status === 'canceled' && !user.trial_ends_at);
+    // Check if subscription is inactive
+    const isSubscriptionInactive = user.subscription_status === 'cancelled' || 
+        user.subscription_status === 'past_due';
     
     console.log('💳 [checkGenerationLimit] Subscription status check:', {
       subscription_status: user.subscription_status,
-      isPastDue: user.subscription_status === 'past_due',
-      isCanceledWithoutTrial: user.subscription_status === 'canceled' && !user.trial_ends_at,
       isSubscriptionInactive
     });
     
@@ -93,37 +64,35 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       console.log('🚫 [checkGenerationLimit] Subscription inactive - returning 403');
       res.status(403).json({ 
         error: 'Subscription inactive', 
-        message: 'Your subscription is inactive. Please update your payment method or upgrade your plan.',
+        message: 'Your subscription is inactive. Please upgrade your plan.',
         upgrade_required: true
       });
       return;
     }
 
-    // Check generation limits
-    const limit = PLAN_LIMITS[user.plan_type as keyof typeof PLAN_LIMITS] || 0;
-    const used = (user.subscription_status === 'trial' || user.subscription_status === 'cancelled') 
-      ? user.trial_generations_used 
-      : user.generations_used_this_month;
+    // Check generation limits based on subscription status
+    const isActive = user.subscription_status === 'active';
+    const limit = isActive ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
+    const used = user.generations_used_this_month;
 
     console.log('📊 [checkGenerationLimit] Generation limits check:', {
-      plan_type: user.plan_type,
+      subscription_status: user.subscription_status,
+      isActive,
       limit,
       used,
       remaining: limit - used,
-      isTrialOrCancelled: user.subscription_status === 'trial' || user.subscription_status === 'cancelled',
       limitReached: used >= limit
     });
 
     if (used >= limit) {
-      const isTrialStatus = user.subscription_status === 'trial' || user.subscription_status === 'cancelled';
       console.log('🚫 [checkGenerationLimit] Generation limit reached - returning 403');
       res.status(403).json({ 
         error: 'Generation limit reached', 
-        message: `You've reached your ${limit} generation limit for this ${isTrialStatus ? 'trial' : 'month'}.`,
+        message: `You've reached your ${limit} generation limit for this ${isActive ? 'month' : 'trial'}.`,
         limit,
         used,
-        plan: user.plan_type,
-        upgrade_required: true,
+        subscription_status: user.subscription_status,
+        upgrade_required: !isActive,
         pricing: {
           premium: '£9.99/month for 100 generations'
         }

@@ -30,9 +30,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     setAiLoading,
   } = useGlobalState();
 
-  // Authentication check
+  // Authentication check - only redirect if loading is complete AND user is not authenticated
   useEffect(() => {
     if (!loading && !isAuthenticated) {
+      console.log('🔐 Not authenticated after loading complete, redirecting to login');
       router.push('/login');
     }
   }, [loading, isAuthenticated, router]);
@@ -92,12 +93,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   };
 
   // Handle AI generation
-  const handleGeneratePosts = () => {
+  const handleGeneratePosts = async () => {
     // This will be called by the header button
     // The actual generation logic will be in the LogsComponent
     // We just trigger it via the window object (temporary solution)
     if ((window as any).handleSendToAI) {
-      (window as any).handleSendToAI();
+      await (window as any).handleSendToAI();
     }
   };
 

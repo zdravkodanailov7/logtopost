@@ -160,107 +160,155 @@ export default function LogsComponent({
     }
   };
 
-  const handleSendToAI = async () => {
-    if (!selectedText.trim() || !isAuthenticated || !currentLog) return;
-    
-    setAiLoading(true);
-    setError(null);
-    
-    try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-      const token = localStorage.getItem('auth_token');
-      const headers: any = { 'Content-Type': 'application/json' };
-      
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
+  const handleSendToAI = async (): Promise<void> => {
+    // Wrap everything in a promise that never rejects
+    return new Promise<void>((resolve) => {
+      (async () => {
+        try {
+          if (!selectedText.trim() || !isAuthenticated || !currentLog) {
+            resolve();
+            return;
+          }
+          
+          setAiLoading(true);
+          setError(null);
+          
+          const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+          const token = localStorage.getItem('auth_token');
+          const headers: any = { 'Content-Type': 'application/json' };
+          
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
 
-      const textarea = textareaRef.current;
-      const selectionStart = textarea ? textarea.selectionStart : 0;
-      const selectionEnd = textarea ? textarea.selectionEnd : 0;
+          const textarea = textareaRef.current;
+          const selectionStart = textarea ? textarea.selectionStart : 0;
+          const selectionEnd = textarea ? textarea.selectionEnd : 0;
 
-      const requestData = {
-        logText: selectedText,
-        dailyLogId: currentLog.id,
-        selectionStart: selectionStart,
-        selectionEnd: selectionEnd,
-      };
+          const requestData = {
+            logText: selectedText,
+            dailyLogId: currentLog.id,
+            selectionStart: selectionStart,
+            selectionEnd: selectionEnd,
+          };
 
-      // Debug logging
-      console.log('🚀 Sending AI request:', {
-        url: `${API_BASE}/api/ai/generate-posts`,
-        logText: selectedText,
-        logTextLength: selectedText.length,
-        dailyLogId: currentLog.id,
-        selectionStart,
-        selectionEnd,
-        requestData,
-        hasToken: !!token,
-        tokenPrefix: token ? token.substring(0, 10) + '...' : 'none'
-      });
+          // Debug logging
+          console.log('🚀 Sending AI request:', {
+            url: `${API_BASE}/api/ai/generate-posts`,
+            logText: selectedText,
+            logTextLength: selectedText.length,
+            dailyLogId: currentLog.id,
+            selectionStart,
+            selectionEnd,
+            requestData,
+            hasToken: !!token,
+            tokenPrefix: token ? token.substring(0, 10) + '...' : 'none'
+          });
 
-      const response = await axios.post(
-        `${API_BASE}/api/ai/generate-posts`,
-        requestData,
-        { 
-          withCredentials: true,
-          headers: headers
+          const response = await axios.post(
+            `${API_BASE}/api/ai/generate-posts`,
+            requestData,
+            { 
+              withCredentials: true,
+              headers: headers,
+              timeout: 30000,
+              validateStatus: () => true // Accept all status codes
+            }
+          );
+
+          console.log('✅ AI response received:', response.data, 'Status:', response.status);
+
+          // Handle successful responses
+          if (response.status === 200) {
+            // Check if we have tweets in the response (successful generation)
+            if (response.data.tweets && response.data.tweets.length > 0) {
+              console.log('Posts generated successfully:', response.data.tweets);
+              // Clear the selection
+              setSelectedText('');
+              if (textarea) {
+                textarea.setSelectionRange(0, 0);
+              }
+              // Show success message
+              setError(null);
+            } else if (response.data.success) {
+              console.log('Posts generated successfully');
+              // Clear the selection
+              setSelectedText('');
+              if (textarea) {
+                textarea.setSelectionRange(0, 0);
+              }
+            } else {
+              console.error('Failed to generate posts:', response.data.error);
+              setError(response.data.error || 'Failed to generate posts. Please try again.');
+            }
+          } else {
+            // Handle error responses without throwing
+            console.log('🔍 Response error details:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: response.data
+            });
+            
+            // Handle specific HTTP status codes
+            if (response.status === 403) {
+              setError('You have reached your usage limit. Please upgrade your plan or wait for your limit to reset.');
+            } else if (response.status === 402) {
+              setError('You have reached your usage limit. Please upgrade your plan or wait for your limit to reset.');
+            } else if (response.status === 401) {
+              setError('Authentication failed. Please try logging in again.');
+            } else if (response.status === 400) {
+              const errorMsg = response.data?.error || response.data?.message || 'Bad request - please check your input';
+              setError(`Request error: ${errorMsg}`);
+            } else if (response.status >= 500) {
+              setError('Server error. Please try again later.');
+            } else {
+              // Handle any other HTTP error responses
+              const errorMsg = response.data?.error || response.data?.message || response.statusText || 'Unknown error occurred';
+              setError(`Error: ${errorMsg}`);
+            }
+          }
+        } catch (err: any) {
+          console.error('❌ Error generating posts:', err);
+          
+          // Even if there's an error, don't let it propagate
+          try {
+            // Log detailed error information
+            if (err.response) {
+              console.error('🔍 Response error details:', {
+                status: err.response.status,
+                statusText: err.response.statusText,
+                data: err.response.data,
+                headers: err.response.headers
+              });
+            } else if (err.request) {
+              console.error('🔍 Request error details:', err.request);
+            } else {
+              console.error('🔍 General error details:', err.message);
+            }
+            
+            // Network error or timeout
+            if (err.code === 'ECONNABORTED') {
+              setError('Request timed out. Please try again.');
+            } else if (err.request) {
+              setError('Network error. Please check your connection and try again.');
+            } else {
+              setError('An unexpected error occurred. Please try again.');
+            }
+          } catch (handlingErr) {
+            console.error('Error in error handling:', handlingErr);
+            setError('An unexpected error occurred. Please try again.');
+          }
+        } finally {
+          try {
+            setAiLoading(false);
+          } catch (finallyErr) {
+            console.error('Error in finally block:', finallyErr);
+          }
+          // Always resolve the promise
+          resolve();
         }
-      );
-
-      console.log('✅ AI response received:', response.data);
-
-      // Check if we have tweets in the response (successful generation)
-      if (response.data.tweets && response.data.tweets.length > 0) {
-        console.log('Posts generated successfully:', response.data.tweets);
-        // Clear the selection
-        setSelectedText('');
-        if (textarea) {
-          textarea.setSelectionRange(0, 0);
-        }
-        // Show success message
-        setError(null);
-      } else if (response.data.success) {
-        console.log('Posts generated successfully');
-        // Clear the selection
-        setSelectedText('');
-        if (textarea) {
-          textarea.setSelectionRange(0, 0);
-        }
-      } else {
-        console.error('Failed to generate posts:', response.data.error);
-        setError(response.data.error || 'Failed to generate posts. Please try again.');
-      }
-    } catch (err: any) {
-      console.error('❌ Error generating posts:', err);
-      
-      // Log detailed error information
-      if (err.response) {
-        console.error('🔍 Response error details:', {
-          status: err.response.status,
-          statusText: err.response.statusText,
-          data: err.response.data,
-          headers: err.response.headers
-        });
-      } else if (err.request) {
-        console.error('🔍 Request error details:', err.request);
-      } else {
-        console.error('🔍 General error details:', err.message);
-      }
-      
-      if (err.response?.status === 402) {
-        setError('You have reached your usage limit. Please upgrade your plan or wait for your limit to reset.');
-      } else if (err.response?.status === 401) {
-        setError('Authentication failed. Please try logging in again.');
-      } else if (err.response?.status === 400) {
-        const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Bad request - please check your input';
-        setError(`Request error: ${errorMsg}`);
-      } else {
-        setError('Failed to generate posts. Please try again.');
-      }
-    } finally {
-      setAiLoading(false);
-    }
+      })();
+    });
   };
 
   // Don't show anything if not authenticated
@@ -287,7 +335,7 @@ export default function LogsComponent({
 
           {/* Error message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-800 rounded dark:bg-red-900/20 dark:border-red-800/30 dark:text-red-300">
               {error}
             </div>
           )}
