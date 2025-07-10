@@ -64,29 +64,10 @@ export const GlobalStateProvider: React.FC<GlobalStateProviderProps> = ({ childr
   const isSubscriptionCancelled = () => {
     if (!user) return false;
     
-    // Check if subscription is cancelled and trial/subscription has ended
-    const now = new Date();
+    // Check if subscription is cancelled - based on current schema, we only have subscription_status
     const isStatusCancelled = user.subscription_status === 'cancelled' || user.subscription_status === 'canceled';
     
-    if (isStatusCancelled) {
-      // Check if trial has ended
-      if (user.trial_ends_at) {
-        const trialEndDate = new Date(user.trial_ends_at);
-        if (now >= trialEndDate) {
-          return true;
-        }
-      }
-      
-      // Check if subscription has ended
-      if (user.subscription_ends_at) {
-        const subscriptionEndDate = new Date(user.subscription_ends_at);
-        if (now >= subscriptionEndDate) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
+    return isStatusCancelled;
   };
 
   // Initialize client state and load saved preferences
