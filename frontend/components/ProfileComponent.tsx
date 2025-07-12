@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { getUserProfile, updateUserProfile, deleteAccount, UserProfile } from '@/lib/profile';
+import { getUserProfile, updateUserProfile, /* deleteAccount, */ UserProfile } from '@/lib/profile';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from "sonner";
 import { ConfirmationDialog } from './ui/confirmation-dialog';
@@ -12,8 +12,8 @@ export function ProfileComponent() {
   const [customPrompt, setCustomPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  // const [isDeleting, setIsDeleting] = useState(false);
+  // const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
@@ -57,25 +57,25 @@ export function ProfileComponent() {
     setCustomPrompt('');
   };
 
-  const handleDeleteAccount = async () => {
-    setIsDeleting(true);
-    
-    const result = await deleteAccount();
-    
-    if (result.success) {
-      toast.success('Account deleted successfully');
-      // Clear local storage and redirect to home
-      localStorage.removeItem('auth_token');
-      logout();
-      window.location.href = '/';
-    } else {
-      console.error('Error deleting account:', result.error);
-      toast.error(result.error || 'Failed to delete account');
-    }
-    
-    setIsDeleting(false);
-    setShowDeleteDialog(false);
-  };
+  // const handleDeleteAccount = async () => {
+  //   setIsDeleting(true);
+  //   
+  //   const result = await deleteAccount();
+  //   
+  //   if (result.success) {
+  //     toast.success('Account deleted successfully');
+  //     // Clear local storage and redirect to home
+  //     localStorage.removeItem('auth_token');
+  //     logout();
+  //     window.location.href = '/';
+  //   } else {
+  //     console.error('Error deleting account:', result.error);
+  //     toast.error(result.error || 'Failed to delete account');
+  //   }
+  //   
+  //   setIsDeleting(false);
+  //   setShowDeleteDialog(false);
+  // };
 
   // Don't show anything if not authenticated
   if (!isAuthenticated) {
@@ -155,7 +155,7 @@ export function ProfileComponent() {
       </div>
 
       {/* Delete Account Section */}
-      <div className="mt-12 pt-6 border-t border-destructive/20">
+      {/* <div className="mt-12 pt-6 border-t border-destructive/20">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-destructive mb-2">Danger Zone</h2>
           <p className="text-sm text-muted-foreground">
@@ -182,7 +182,7 @@ export function ProfileComponent() {
         confirmText="Delete Account"
         confirmVariant="destructive"
         isLoading={isDeleting}
-      />
+      /> */}
     </div>
   );
 } 

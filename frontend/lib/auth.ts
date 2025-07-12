@@ -8,6 +8,10 @@ export interface User {
   generations_used_this_month?: number;
   is_admin?: boolean;
   custom_prompt?: string;
+  trial_ends_at?: string | null;
+  subscription_ends_at?: string | null;
+  is_cancelled?: boolean;
+  cancel_at_period_end?: boolean;
 }
 
 export interface AuthResponse {

@@ -64,8 +64,22 @@ export const GlobalStateProvider: React.FC<GlobalStateProviderProps> = ({ childr
   const isSubscriptionCancelled = () => {
     if (!user) return false;
     
-    // Check if subscription is cancelled - based on current schema, we only have subscription_status
+    // Use the new is_cancelled property from Stripe data if available
+    if (user.is_cancelled !== undefined) {
+      return user.is_cancelled;
+    }
+    
+    // Fall back to checking subscription_status
     const isStatusCancelled = user.subscription_status === 'cancelled' || user.subscription_status === 'canceled';
+    
+    // Also check if trial has ended
+    if (user.subscription_status === 'trialing' && user.trial_ends_at) {
+      const trialEndDate = new Date(user.trial_ends_at);
+      const now = new Date();
+      if (trialEndDate < now) {
+        return true;
+      }
+    }
     
     return isStatusCancelled;
   };

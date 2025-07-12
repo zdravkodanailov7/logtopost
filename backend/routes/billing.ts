@@ -90,6 +90,96 @@ router.get('/subscription', async (req: Request, res: Response) => {
   }
 });
 
+// Get current user's subscription info directly from Stripe
+router.get('/subscription-stripe', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const [user] = await db
+      .select({
+        id: users.id,
+        stripe_customer_id: users.stripe_customer_id,
+        generations_used_this_month: users.generations_used_this_month,
+        subscription_status: users.subscription_status, // Fallback
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let subscriptionData = {
+      status: user.subscription_status || 'trial',
+      trial_ends_at: null as Date | null,
+      subscription_ends_at: null as Date | null,
+      is_cancelled: false,
+      cancel_at_period_end: false,
+    };
+
+    // If user has a Stripe customer ID, fetch real data from Stripe
+    if (user.stripe_customer_id) {
+      try {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripe_customer_id,
+          limit: 1,
+          status: 'all' // Get all statuses including cancelled
+        });
+
+        if (subscriptions.data.length > 0) {
+          const subscription = subscriptions.data[0];
+          
+          subscriptionData = {
+            status: subscription.status,
+            trial_ends_at: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+            subscription_ends_at: null, // Will be set based on subscription periods
+            is_cancelled: subscription.status === 'canceled',
+            cancel_at_period_end: subscription.cancel_at_period_end || false,
+          };
+        }
+      } catch (stripeError) {
+        console.error('Error fetching Stripe subscription:', stripeError);
+        // Fall back to database data if Stripe fails
+      }
+    }
+
+    // Determine if subscription is truly cancelled
+    const isCancelled = subscriptionData.is_cancelled || 
+                       subscriptionData.status === 'canceled' ||
+                       (subscriptionData.status === 'trialing' && subscriptionData.trial_ends_at && subscriptionData.trial_ends_at < new Date());
+
+    // Determine limits based on subscription status
+    const isActive = subscriptionData.status === 'active';
+    const isTrialing = subscriptionData.status === 'trialing';
+    const limit = (isActive || isTrialing) ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
+    const used = user.generations_used_this_month;
+
+    res.json({
+      id: user.id,
+      subscription_status: subscriptionData.status,
+      trial_ends_at: subscriptionData.trial_ends_at,
+      subscription_ends_at: subscriptionData.subscription_ends_at,
+      is_cancelled: isCancelled,
+      cancel_at_period_end: subscriptionData.cancel_at_period_end,
+      current_plan: (isActive || isTrialing) ? PLAN_PRICING.premium : null,
+      usage: {
+        used,
+        limit,
+        remaining: Math.max(0, limit - used),
+        percentage: Math.min(100, Math.round((used / limit) * 100))
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Stripe subscription error:', error);
+    res.status(500).json({ error: 'Failed to fetch subscription info' });
+  }
+});
+
 // Create checkout session
 router.post('/create-checkout-session', async (req: Request, res: Response) => {
   try {

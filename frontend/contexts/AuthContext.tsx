@@ -14,6 +14,7 @@ interface AuthContextType {
   createCheckoutSession: (plan: string) => Promise<string>;
   canEditPrompt: boolean;
   refreshUser: () => Promise<void>;
+  refreshSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +46,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           try {
             const { user: currentUser } = await getCurrentUser(token);
             setUser(currentUser);
+            // Fetch fresh subscription data from Stripe
+            await fetchSubscriptionData(currentUser);
           } catch (error) {
             // Token is invalid, clear stored data
             logout();
@@ -60,6 +63,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     initializeAuth();
   }, []);
+
+  const fetchSubscriptionData = async (currentUser: User) => {
+    try {
+      const token = getToken();
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/subscription-stripe`,
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+
+      if (response.data) {
+        // Update user with subscription data from Stripe
+        const updatedUser = {
+          ...currentUser,
+          subscription_status: response.data.subscription_status,
+          trial_ends_at: response.data.trial_ends_at,
+          subscription_ends_at: response.data.subscription_ends_at,
+          is_cancelled: response.data.is_cancelled,
+          cancel_at_period_end: response.data.cancel_at_period_end,
+        };
+        setUser(updatedUser);
+        saveUser(updatedUser);
+      }
+    } catch (error) {
+      console.error('Error fetching subscription data:', error);
+      // Don't throw error, just use existing user data
+    }
+  };
+
+  const refreshSubscription = async () => {
+    if (user) {
+      await fetchSubscriptionData(user);
+    }
+  };
 
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -131,6 +176,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const { user: currentUser } = await getCurrentUser(token);
         setUser(currentUser);
         saveUser(currentUser);
+        // Also refresh subscription data
+        await fetchSubscriptionData(currentUser);
       }
     } catch (error) {
       console.error('Error refreshing user:', error);
@@ -149,6 +196,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     createCheckoutSession,
     canEditPrompt,
     refreshUser,
+    refreshSubscription,
   };
 
   return (
