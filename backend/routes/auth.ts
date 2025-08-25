@@ -41,40 +41,13 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(409).json({ error: 'User with this email already exists' });
     }
 
-    // ANTI-ABUSE CHECK: Check if Stripe customer exists with this email
-    let hasHadTrialBefore = false;
-    try {
-      const existingCustomers = await stripe.customers.list({
-        email: email.toLowerCase(),
-        limit: 1
-      });
-
-      if (existingCustomers.data.length > 0) {
-        const customerId = existingCustomers.data[0].id;
-        
-        // Check if this customer has had any subscriptions (indicating previous trial/subscription)
-        const subscriptions = await stripe.subscriptions.list({
-          customer: customerId,
-          limit: 1
-        });
-
-        if (subscriptions.data.length > 0) {
-          hasHadTrialBefore = true;
-          console.log('🚫 Anti-abuse: Email', email, 'has existing Stripe customer with previous subscriptions');
-        }
-      }
-    } catch (stripeError) {
-      console.error('⚠️ Stripe customer check failed:', stripeError);
-      // Continue with registration even if Stripe check fails
-    }
-
     // Hash password and create user
     const hashedPassword = await hashPassword(password);
     
     const [newUser] = await db.insert(users).values({
       email: email.toLowerCase(),
       password: hashedPassword,
-      subscription_status: hasHadTrialBefore ? 'cancelled' : 'trial',  // No trial if they've had one before
+      subscription_status: 'inactive',  // New users start inactive - need to subscribe
     }).returning({ id: users.id, email: users.email, created_at: users.created_at });
 
     // Generate JWT token
@@ -88,17 +61,13 @@ router.post('/register', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    const responseMessage = hasHadTrialBefore 
-      ? 'Account created successfully. Previous trial detected - please subscribe to continue.'
-      : 'User created successfully';
-
     res.status(201).json({
-      message: responseMessage,
+      message: 'User created successfully',
       user: {
         id: newUser.id,
         email: newUser.email,
         created_at: newUser.created_at,
-        subscription_status: hasHadTrialBefore ? 'cancelled' : 'trial'
+        subscription_status: 'inactive'
       },
       token
     });
@@ -196,6 +165,109 @@ router.get('/me', async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error('Profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Complete account setup for Stripe-first users
+router.post('/complete-setup', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+
+    // Find user with this email
+    let [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    
+    if (!user) {
+      // User might not be created yet by webhook - check if they have a Stripe customer
+      try {
+        const existingCustomers = await stripe.customers.list({
+          email: email.toLowerCase(),
+          limit: 1
+        });
+
+        if (existingCustomers.data.length > 0) {
+          const customerId = existingCustomers.data[0].id;
+          
+          // Check if this customer has active subscriptions
+          const subscriptions = await stripe.subscriptions.list({
+            customer: customerId,
+            status: 'active',
+            limit: 1
+          });
+
+          if (subscriptions.data.length > 0) {
+            // Create the user account since they have paid but webhook hasn't run yet
+            const hashedPassword = await hashPassword(password);
+            
+            const [newUser] = await db.insert(users).values({
+              email: email.toLowerCase(),
+              password: hashedPassword,
+              subscription_status: 'active',
+              stripe_customer_id: customerId,
+              generations_used_this_month: 0,
+            }).returning({ id: users.id, email: users.email, created_at: users.created_at });
+
+            user = newUser;
+            console.log(`✅ Created user account during setup for ${email}`);
+          } else {
+            return res.status(404).json({ error: 'No active subscription found. Please complete payment first.' });
+          }
+        } else {
+          return res.status(404).json({ error: 'Account not found. Please complete payment first.' });
+        }
+      } catch (stripeError) {
+        console.error('Error checking Stripe customer:', stripeError);
+        return res.status(404).json({ error: 'Account not found. Please try again in a moment.' });
+      }
+    } else {
+      // User exists - check if password is already set
+      if (user.password) {
+        return res.status(400).json({ error: 'Account setup already completed' });
+      }
+
+      // Hash password and update user
+      const hashedPassword = await hashPassword(password);
+      
+      await db
+        .update(users)
+        .set({ 
+          password: hashedPassword,
+          updated_at: new Date()
+        })
+        .where(eq(users.id, user.id));
+    }
+
+    // Generate JWT token
+    const token = generateToken(user.id);
+
+    // Set token as httpOnly cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.json({
+      message: 'Account setup completed successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        created_at: user.created_at
+      },
+      token
+    });
+
+  } catch (error) {
+    console.error('Complete setup error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

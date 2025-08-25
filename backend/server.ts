@@ -7,8 +7,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import logsRoutes from './routes/logs';
 import postsRoutes from './routes/posts';
-import emailsRoutes from './routes/emails';
-import waitlistRoutes from './routes/waitlist';
+
 import userRoutes from './routes/user';
 import aiRoutes from './routes/ai';
 import billingRoutes from './routes/billing';
@@ -51,8 +50,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/logs', logsRoutes);
 app.use('/api/posts', postsRoutes);
-app.use('/api/emails', emailsRoutes);
-app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/billing', billingRoutes);

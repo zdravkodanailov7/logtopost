@@ -22,11 +22,4 @@ export const PLAN_OPTIONS: Record<string, PlanOption> = {
     features: ['100 generations/month', 'Core features', 'Custom AI prompts'],
     popular: true
   }
-};
-
-export const TRIAL_PLAN = {
-  name: 'Free Trial',
-  generations: 10,
-  duration: 7, // days
-  features: ['10 generations total', '7 days trial period']
 }; 

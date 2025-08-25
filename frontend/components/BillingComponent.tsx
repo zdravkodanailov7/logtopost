@@ -22,6 +22,10 @@ import { ConfirmationDialog } from './ui/confirmation-dialog';
 interface BillingInfo {
   subscription_status: string;
   generations_used_this_month: number;
+  is_cancelled?: boolean;
+  cancel_at_period_end?: boolean;
+  trial_ends_at?: string | null;
+  subscription_ends_at?: string | null;
   usage: {
     used: number;
     limit: number;
@@ -41,8 +45,9 @@ export function BillingComponent() {
   const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [confirmationType, setConfirmationType] = useState<'upgrade' | 'portal'>('upgrade');
+  const [confirmationType, setConfirmationType] = useState<'upgrade' | 'portal' | 'cancel'>('upgrade');
   const { isAuthenticated, refreshUser } = useAuth();
 
   // Get the Premium plan details
@@ -52,6 +57,19 @@ export function BillingComponent() {
     if (isAuthenticated) {
       fetchBillingInfo();
     }
+  }, [isAuthenticated]);
+
+  // Auto-refresh when returning from portal (check URL for portal return)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isAuthenticated) {
+        // Small delay to ensure user sees the refresh
+        setTimeout(fetchBillingInfo, 1000);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isAuthenticated]);
 
   const fetchBillingInfo = async () => {
@@ -64,7 +82,7 @@ export function BillingComponent() {
       }
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/subscription`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/subscription-stripe`,
         { 
           withCredentials: true,
           headers: headers
@@ -89,6 +107,13 @@ export function BillingComponent() {
     setConfirmationType('portal');
     setShowConfirmation(true);
   };
+
+  const handleCancelClick = () => {
+    setConfirmationType('cancel');
+    setShowConfirmation(true);
+  };
+
+
 
   const handleCreateCheckout = async () => {
     setIsCreatingCheckout(true);
@@ -156,6 +181,42 @@ export function BillingComponent() {
     }
   };
 
+  const handleCancelSubscription = async () => {
+    setIsProcessing(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/cancel-subscription`,
+        {},
+        { 
+          withCredentials: true,
+          headers: headers
+        }
+      );
+
+      if (response.data.success) {
+        toast.success(response.data.message || 'Subscription cancelled successfully');
+        await fetchBillingInfo(); // Refresh billing info
+      } else {
+        throw new Error('Cancellation failed');
+      }
+    } catch (error: any) {
+      console.error('Cancel error:', error);
+      toast.error(error.response?.data?.error || 'Failed to cancel subscription. Please try again.');
+    } finally {
+      setIsProcessing(false);
+      setShowConfirmation(false);
+    }
+  };
+
+
+
   // Don't show anything if not authenticated
   if (!isAuthenticated) {
     return (
@@ -193,25 +254,25 @@ export function BillingComponent() {
     );
   }
 
-  const isOnTrial = billingInfo.subscription_status === 'trial';
-  const isActive = billingInfo.subscription_status === 'active';
-  const isCancelled = billingInfo.subscription_status === 'cancelled';
-  const hasUsedUpTrial = isOnTrial && billingInfo.usage.remaining <= 0;
+  const isActive = billingInfo.subscription_status === 'active' && !billingInfo.is_cancelled;
+  const isCancelled = billingInfo.subscription_status === 'cancelled' || billingInfo.subscription_status === 'canceled' || billingInfo.is_cancelled;
+  const willCancel = billingInfo.cancel_at_period_end;
+  const isInactive = billingInfo.subscription_status === 'inactive' || (!isActive && !isCancelled);
 
   return (
     <div className="p-6 max-w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">
-          {isActive ? 'Premium Subscription' : hasUsedUpTrial ? 'Trial Expired' : isOnTrial ? 'Free Trial' : 'Subscription'}
+          {isActive && !willCancel ? 'Premium Subscription' : 'No Active Subscription'}
         </h1>
         <p className="text-muted-foreground">
-          {isActive 
+          {isActive && !willCancel
             ? 'Your Premium subscription is active.'
-            : hasUsedUpTrial
-              ? 'Your free trial has ended. Upgrade to Premium to continue.'
-              : isOnTrial 
-                ? 'You are currently on a free trial.'
-                : 'Your subscription is not active.'
+            : willCancel
+              ? 'Your subscription will end at the current billing period. Subscribe again to continue using Premium features.'
+              : isCancelled
+                ? 'Your subscription has been cancelled. Subscribe to Premium to continue using the app.'
+                : 'Subscribe to Premium to start generating posts.'
           }
         </p>
       </div>
@@ -220,12 +281,17 @@ export function BillingComponent() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {isActive ? (
+            {(isActive && !willCancel) ? (
               <Crown className="h-5 w-5 text-purple-500" />
             ) : (
-              <Clock className="h-5 w-5 text-blue-500" />
+              <AlertTriangle className="h-5 w-5 text-red-500" />
             )}
-            {isActive ? 'Premium Usage' : 'Trial Usage'}
+            {isActive && !willCancel
+              ? 'Premium Usage'
+              : willCancel
+                ? 'Usage (Subscription Ending)'
+                : 'Usage (No Active Subscription)'
+            }
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -243,8 +309,8 @@ export function BillingComponent() {
         </CardContent>
       </Card>
 
-      {/* Premium Plan Info (show if not active) */}
-      {!isActive && (
+      {/* Premium Plan Info (show if not active or will cancel) */}
+      {(!isActive || willCancel || isCancelled) && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -281,12 +347,15 @@ export function BillingComponent() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {isActive ? 'Subscription Management' : 'Actions'}
+            {(isActive && !willCancel) 
+              ? 'Subscription Management' 
+              : 'Subscribe to Premium'
+            }
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isActive ? (
-            <div className="text-center">
+          {(isActive && !willCancel) ? (
+            <div className="text-center space-y-3">
               <Button 
                 onClick={handleManageBillingClick}
                 className="w-full"
@@ -295,14 +364,46 @@ export function BillingComponent() {
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Manage Billing
               </Button>
+              <Button 
+                onClick={handleCancelClick}
+                variant="outline"
+                className="w-full"
+                size="sm"
+              >
+                Cancel Subscription
+              </Button>
               <div className="mt-4 text-xs text-muted-foreground text-center">
                 <p>Manage your subscription, payment methods, and billing history</p>
               </div>
             </div>
+          ) : willCancel ? (
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-4">
+                Your subscription will end at the current billing period. Subscribe again to continue using Premium features.
+              </p>
+              <Button 
+                onClick={handleUpgradeClick}
+                disabled={isCreatingCheckout}
+                className="w-full mb-2"
+                size="lg"
+              >
+                <Zap className="mr-2 h-4 w-4" />
+                {isCreatingCheckout ? 'Creating...' : 'Subscribe to Premium'}
+              </Button>
+              <Button 
+                onClick={handleManageBillingClick}
+                variant="outline"
+                className="w-full"
+                size="sm"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Manage Billing
+              </Button>
+            </div>
           ) : isCancelled ? (
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">
-                Your subscription has been cancelled. Upgrade to continue using the app.
+                Your subscription has been cancelled. You currently have no active subscription.
               </p>
               <Button 
                 onClick={handleUpgradeClick}
@@ -311,11 +412,14 @@ export function BillingComponent() {
                 size="lg"
               >
                 <Zap className="mr-2 h-4 w-4" />
-                {isCreatingCheckout ? 'Creating...' : 'Upgrade to Premium'}
+                {isCreatingCheckout ? 'Creating...' : 'Subscribe to Premium'}
               </Button>
             </div>
           ) : (
             <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-4">
+                You currently have no active subscription.
+              </p>
               <Button 
                 onClick={handleUpgradeClick}
                 disabled={isCreatingCheckout}
@@ -323,15 +427,10 @@ export function BillingComponent() {
                 size="lg"
               >
                 <Zap className="mr-2 h-4 w-4" />
-                {isCreatingCheckout ? 'Creating...' : 'Upgrade to Premium'}
+                {isCreatingCheckout ? 'Creating...' : 'Subscribe to Premium'}
               </Button>
               <div className="mt-4 text-xs text-muted-foreground text-center">
-                <p>
-                  {hasUsedUpTrial 
-                    ? 'Immediate access to 100 generations • Cancel anytime'
-                    : 'Cancel anytime'
-                  }
-                </p>
+                <p>Immediate access to 100 generations • Cancel anytime</p>
               </div>
             </div>
           )}
@@ -344,25 +443,33 @@ export function BillingComponent() {
         onConfirm={
           confirmationType === 'upgrade' 
             ? handleCreateCheckout
-            : handleManageBilling
+            : confirmationType === 'cancel'
+              ? handleCancelSubscription
+              : handleManageBilling
         }
         title={
           confirmationType === 'upgrade' 
-            ? 'Upgrade to Premium' 
-            : 'Manage Billing'
+            ? 'Upgrade to Premium'
+            : confirmationType === 'cancel'
+              ? 'Cancel Subscription'
+              : 'Manage Billing'
         }
         message={
           confirmationType === 'upgrade' 
-            ? `Upgrade to Premium for ${premiumPlan.currency}${premiumPlan.price}/month? ${hasUsedUpTrial ? "You'll get immediate access to 100 generations." : "You may be eligible for a 7-day free trial."}`
-            : 'Open Stripe billing portal to manage your subscription and payment methods?'
+            ? `Upgrade to Premium for ${premiumPlan.currency}${premiumPlan.price}/month? You'll get immediate access to 100 generations.`
+            : confirmationType === 'cancel'
+              ? 'Are you sure you want to cancel your subscription? You will keep access until the end of your current billing period.'
+              : 'Open Stripe billing portal to manage your subscription and payment methods?'
         }
         confirmText={
           confirmationType === 'upgrade' 
-            ? 'Upgrade Now' 
-            : 'Open Portal'
+            ? 'Upgrade Now'
+            : confirmationType === 'cancel'
+              ? 'Cancel Subscription'
+              : 'Open Portal'
         }
-        confirmVariant="default"
-        isLoading={isCreatingCheckout}
+        confirmVariant={confirmationType === 'cancel' ? 'destructive' : 'default'}
+        isLoading={isCreatingCheckout || isProcessing}
       />
     </div>
   );

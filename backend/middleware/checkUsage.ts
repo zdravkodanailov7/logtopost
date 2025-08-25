@@ -6,7 +6,6 @@ import { authenticateRequest } from '../utils/auth';
 
 // Plan limits configuration (updated to match new plan structure)
 const PLAN_LIMITS = {
-  trial: 10, // 10 generations during trial
   premium: 100, // £9.99/month - 100 generations
 };
 
@@ -52,8 +51,7 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
     }
 
     // Check if subscription is inactive
-    const isSubscriptionInactive = user.subscription_status === 'cancelled' || 
-        user.subscription_status === 'past_due';
+    const isSubscriptionInactive = user.subscription_status !== 'active';
     
     console.log('💳 [checkGenerationLimit] Subscription status check:', {
       subscription_status: user.subscription_status,
@@ -63,8 +61,8 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
     if (isSubscriptionInactive) {
       console.log('🚫 [checkGenerationLimit] Subscription inactive - returning 403');
       res.status(403).json({ 
-        error: 'Subscription inactive', 
-        message: 'Your subscription is inactive. Please upgrade your plan.',
+        error: 'Subscription required', 
+        message: 'You need an active Premium subscription to generate posts.',
         upgrade_required: true
       });
       return;
@@ -72,7 +70,7 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
 
     // Check generation limits based on subscription status
     const isActive = user.subscription_status === 'active';
-    const limit = isActive ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
+    const limit = isActive ? PLAN_LIMITS.premium : 0;
     const used = user.generations_used_this_month;
 
     console.log('📊 [checkGenerationLimit] Generation limits check:', {
@@ -88,11 +86,11 @@ export const checkGenerationLimit = async (req: Request, res: Response, next: Ne
       console.log('🚫 [checkGenerationLimit] Generation limit reached - returning 403');
       res.status(403).json({ 
         error: 'Generation limit reached', 
-        message: `You've reached your ${limit} generation limit for this ${isActive ? 'month' : 'trial'}.`,
+        message: `You've reached your ${limit} generation limit for this month.`,
         limit,
         used,
         subscription_status: user.subscription_status,
-        upgrade_required: !isActive,
+        upgrade_required: false, // They already have premium, just hit the limit
         pricing: {
           premium: '£9.99/month for 100 generations'
         }

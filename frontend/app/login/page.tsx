@@ -28,18 +28,18 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/30">
-        <div className="container mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#162216] transition-all duration-500 ease-in-out">
-              <span className="text-lg font-bold text-[#00B23C]">LP</span>
-            </div>
-            <h1 className="text-xl font-semibold text-foreground transition-colors duration-500 ease-in-out">LogToPost</h1>
+      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <Link href="/" className="font-semibold text-lg">
+            Log to Post
           </Link>
-          
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => router.push('/register')} className="cursor-pointer">
+              Sign Up
+            </Button>
+          </div>
         </div>
-      </header>
+      </nav>
 
       {/* Login Form */}
       <main className="flex items-center justify-center min-h-[calc(100vh-3rem)] px-4">

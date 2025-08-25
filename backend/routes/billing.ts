@@ -23,7 +23,6 @@ const PLAN_PRICING = {
 };
 
 const PLAN_LIMITS = {
-  trial: 10,
   premium: PLAN_PRICING.premium.generations
 };
 
@@ -32,12 +31,6 @@ router.get('/plans', (req: Request, res: Response) => {
   try {
     res.json({
       currency: 'GBP',
-      trial: {
-        name: 'Free Trial',
-        price: 0,
-        generations: 10,
-        duration: '7 days'
-      },
       plan: PLAN_PRICING.premium
     });
   } catch (error) {
@@ -70,7 +63,7 @@ router.get('/subscription', async (req: Request, res: Response) => {
 
     // Determine limits based on subscription status
     const isActive = user.subscription_status === 'active';
-    const limit = isActive ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
+    const limit = isActive ? PLAN_LIMITS.premium : 0;
     const used = user.generations_used_this_month;
 
     res.json({
@@ -80,7 +73,7 @@ router.get('/subscription', async (req: Request, res: Response) => {
         used,
         limit,
         remaining: Math.max(0, limit - used),
-        percentage: Math.min(100, Math.round((used / limit) * 100))
+        percentage: limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100
       }
     });
 
@@ -154,8 +147,7 @@ router.get('/subscription-stripe', async (req: Request, res: Response) => {
 
     // Determine limits based on subscription status
     const isActive = subscriptionData.status === 'active';
-    const isTrialing = subscriptionData.status === 'trialing';
-    const limit = (isActive || isTrialing) ? PLAN_LIMITS.premium : PLAN_LIMITS.trial;
+    const limit = isActive ? PLAN_LIMITS.premium : 0;
     const used = user.generations_used_this_month;
 
     res.json({
@@ -165,12 +157,12 @@ router.get('/subscription-stripe', async (req: Request, res: Response) => {
       subscription_ends_at: subscriptionData.subscription_ends_at,
       is_cancelled: isCancelled,
       cancel_at_period_end: subscriptionData.cancel_at_period_end,
-      current_plan: (isActive || isTrialing) ? PLAN_PRICING.premium : null,
+      current_plan: isActive ? PLAN_PRICING.premium : null,
       usage: {
         used,
         limit,
         remaining: Math.max(0, limit - used),
-        percentage: Math.min(100, Math.round((used / limit) * 100))
+        percentage: limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100
       }
     });
 
@@ -180,7 +172,7 @@ router.get('/subscription-stripe', async (req: Request, res: Response) => {
   }
 });
 
-// Create checkout session
+// Create checkout session (for existing users)
 router.post('/create-checkout-session', async (req: Request, res: Response) => {
   try {
     const userId = authenticateRequest(req);
@@ -188,14 +180,13 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Get user details including subscription info
+    // Get user details
     const [user] = await db
       .select({
         id: users.id,
         email: users.email,
         stripe_customer_id: users.stripe_customer_id,
         subscription_status: users.subscription_status,
-        generations_used_this_month: users.generations_used_this_month,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -209,21 +200,6 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
     if (user.subscription_status === 'active') {
       return res.status(400).json({ error: 'Already have an active subscription' });
     }
-
-    // Backend decides trial eligibility based on DB state
-    // If they're currently on trial and have used generations, they've had their trial
-    const hasAlreadyHadTrial = user.subscription_status === 'trial' && user.generations_used_this_month > 0;
-    const shouldIncludeTrial = 
-      user.subscription_status !== 'active' &&
-      !hasAlreadyHadTrial;
-
-    console.log('🏪 Trial eligibility check:', {
-      userId: user.id,
-      subscription_status: user.subscription_status,
-      generations_used: user.generations_used_this_month,
-      hasAlreadyHadTrial,
-      shouldIncludeTrial
-    });
 
     // Create or retrieve Stripe customer
     let customerId = user.stripe_customer_id;
@@ -242,48 +218,8 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
         .where(eq(users.id, userId));
     }
 
-// Handle upgrade from trial by ending existing trial
-    if (user.subscription_status === 'trial' && customerId) {
-      // Find trialing subscription
-      const subscriptions = await stripe.subscriptions.list({
-        customer: customerId,
-        status: 'trialing',
-        limit: 1
-      });
-
-      if (subscriptions.data.length > 0) {
-        const subId = subscriptions.data[0].id;
-        
-        console.log(`🏪 Upgrading trial for subscription ${subId}`);
-        
-        const updatedSubscription = await stripe.subscriptions.update(subId, {
-          trial_end: 'now'
-        });
-
-        // Check if update was successful
-        if (updatedSubscription.status === 'active') {
-          // Update database immediately
-          await db.update(users)
-            .set({
-              subscription_status: 'active',
-              generations_used_this_month: 0,
-              updated_at: new Date()
-            })
-            .where(eq(users.id, userId));
-
-          const successUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard?success=true`;
-          
-          console.log(`✅ Successfully upgraded user ${userId} to active`);
-          return res.json({ url: successUrl });
-        } else {
-          throw new Error(`Subscription update failed: status ${updatedSubscription.status}`);
-        }
-      }
-    }
-
-    // Normal checkout flow
     // Create checkout session configuration
-    const sessionConfig: any = {
+    const sessionConfig = {
       customer: customerId,
       payment_method_types: ['card'],
       line_items: [
@@ -297,22 +233,12 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
       cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`,
       metadata: {
         userId: user.id,
-        originallyEligibleForTrial: shouldIncludeTrial.toString(),
       },
     };
 
-    // Only add trial if eligible
-    if (shouldIncludeTrial) {
-      sessionConfig.subscription_data = {
-        trial_period_days: 7,
-      };
-    }
-
-    console.log('🏪 Creating checkout session:', {
+    console.log('🏪 Creating checkout session for existing user:', {
       userId: user.id,
-      email: user.email,
-      shouldIncludeTrial,
-      trialDays: shouldIncludeTrial ? 7 : 0
+      email: user.email
     });
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
@@ -324,6 +250,113 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to create checkout session' });
   }
 });
+
+// Create checkout session for new users (Stripe-first flow)
+router.post('/create-checkout-session-public', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Create checkout session configuration
+    const sessionConfig = {
+      customer_email: email,
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: PLAN_PRICING.premium.stripe_price_id,
+          quantity: 1,
+        },
+      ],
+      mode: 'subscription',
+      success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/setup?success=true&email=${encodeURIComponent(email)}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}`,
+      metadata: {
+        email: email.toLowerCase(),
+        signup_flow: 'stripe_first',
+      },
+    };
+
+    console.log('🏪 Creating public checkout session:', {
+      email: email.toLowerCase()
+    });
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+
+    res.json({ url: session.url });
+
+  } catch (error) {
+    console.error('Public checkout error:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// Cancel subscription directly
+router.post('/cancel-subscription', async (req: Request, res: Response) => {
+  try {
+    const userId = authenticateRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const [user] = await db
+      .select({
+        id: users.id,
+        stripe_customer_id: users.stripe_customer_id,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.stripe_customer_id) {
+      return res.status(400).json({ error: 'No billing account found' });
+    }
+
+    // Find active subscription
+    const subscriptions = await stripe.subscriptions.list({
+      customer: user.stripe_customer_id,
+      status: 'active',
+      limit: 1
+    });
+
+    if (subscriptions.data.length === 0) {
+      return res.status(400).json({ error: 'No active subscription found' });
+    }
+
+    const subscription = subscriptions.data[0];
+    
+    // Cancel at period end (user keeps access until billing period ends)
+    const updatedSubscription = await stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: true
+    });
+
+    // Update database
+    await db
+      .update(users)
+      .set({
+        subscription_status: updatedSubscription.cancel_at_period_end ? 'active' : 'cancelled',
+        updated_at: new Date()
+      })
+      .where(eq(users.id, userId));
+
+    res.json({ 
+      success: true,
+      message: 'Subscription will be cancelled at the end of the current billing period',
+      ends_at: updatedSubscription.current_period_end ? new Date(updatedSubscription.current_period_end * 1000) : null
+    });
+
+  } catch (error) {
+    console.error('Cancel subscription error:', error);
+    res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+});
+
 
 // Create Customer Portal session
 router.post('/create-portal-session', async (req: Request, res: Response) => {
@@ -385,16 +418,51 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const session = event.data.object;
         if (session.mode === 'subscription') {
           const userId = session.metadata?.userId;
-          const hadTrialEligibility = session.metadata?.originallyEligibleForTrial === 'true';
+          const email = session.metadata?.email;
+          const signupFlow = session.metadata?.signup_flow;
+
           if (userId) {
+            // Existing user flow
             await db
               .update(users)
               .set({
-                subscription_status: hadTrialEligibility ? 'trial' : 'active',
+                subscription_status: 'active',
                 updated_at: new Date()
               })
               .where(eq(users.id, userId));
-            console.log(`✅ User ${userId} started ${hadTrialEligibility ? 'trial' : 'premium subscription'}`);
+            console.log(`✅ User ${userId} started premium subscription`);
+          } else if (email && signupFlow === 'stripe_first') {
+            // Stripe-first flow: create account automatically
+            try {
+              // Check if user already exists
+              const existingUser = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+              
+              if (existingUser.length === 0) {
+                // Create new user account
+                const [newUser] = await db.insert(users).values({
+                  email: email.toLowerCase(),
+                  password: null, // Will be set when they complete setup
+                  subscription_status: 'active',
+                  stripe_customer_id: session.customer as string,
+                  generations_used_this_month: 0,
+                }).returning({ id: users.id, email: users.email });
+
+                console.log(`✅ Auto-created account for ${email} with subscription`);
+              } else {
+                // Update existing user
+                await db
+                  .update(users)
+                  .set({
+                    subscription_status: 'active',
+                    stripe_customer_id: session.customer as string,
+                    updated_at: new Date()
+                  })
+                  .where(eq(users.email, email.toLowerCase()));
+                console.log(`✅ Updated existing user ${email} subscription`);
+              }
+            } catch (autoCreateError) {
+              console.error('❌ Failed to auto-create account:', autoCreateError);
+            }
           }
         }
         break;

@@ -15,12 +15,7 @@ export const users = pgTable('users', {
   updated_at: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export const emails = pgTable('emails', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: varchar('email', { length: 255 }).notNull(),
-  source: varchar('source', { length: 100 }).default('waitlist'),
-  created_at: timestamp('created_at').defaultNow().notNull(),
-});
+
 
 export const dailyLogs = pgTable('daily_logs', {
   id: uuid('id').primaryKey().defaultRandom(),

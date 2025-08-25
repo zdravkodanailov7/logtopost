@@ -21,7 +21,7 @@ import * as motion from "motion/react-client";
 import { FaXTwitter } from "react-icons/fa6";
 import { Loader2, Check } from "lucide-react";
 import SplitText from "@/components/ui/split-text";
-import { Counter, CounterRef } from "@/components/counter";
+
 import GradientText from "@/components/ui/gradient-text";
 import { PLAN_OPTIONS } from "@/lib/plans";
 
@@ -70,39 +70,6 @@ function WaitlistForm({ onUserAdded }: { onUserAdded?: () => void }) {
     const minLoadingTime = 1000; // 1 second
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/emails/waitlist`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(validationResult.data),
-      });
-
-      let responseBody = {};
-      try {
-        // 204
-        const text = await response.text();
-        if (text) {
-          responseBody = JSON.parse(text);
-        }
-      } catch (parseError) {
-        console.error("Failed to parse response body:", parseError);
-        if (!response.ok) {
-          throw new Error(
-            `HTTP error ${response.status}: ${
-              response.statusText || "Request failed"
-            }`
-          );
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          (responseBody as { error?: string })?.error ||
-            `Request failed with status: ${response.status}`
-        );
-      }
-
       // Ensure minimum loading time has passed
       const elapsedTime = Date.now() - startTime;
       const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
@@ -111,16 +78,7 @@ function WaitlistForm({ onUserAdded }: { onUserAdded?: () => void }) {
         await new Promise(resolve => setTimeout(resolve, remainingTime));
       }
 
-      if ((responseBody as { alreadyExists?: boolean })?.alreadyExists) {
-        toast.info("You're already on the waitlist!");
-      } else {
-        toast.success(
-          (responseBody as { message?: string })?.message ||
-            "Successfully joined the waitlist!"
-        );
-        // Trigger counter refetch when a new user is added
-        onUserAdded?.();
-      }
+      toast.success("Thanks for your interest! The app is now live - no waitlist needed!");
       form.reset();
     } catch (error) {
       // Ensure minimum loading time has passed even for errors
@@ -284,8 +242,10 @@ function ProblemSolutionSection() {
 }
 
 function PricingSection() {
-  const { isAuthenticated, createCheckoutSession } = useAuth();
+  const { isAuthenticated, createCheckoutSession, user } = useAuth();
   const router = useRouter();
+  const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
+  const [email, setEmail] = useState('');
 
   // Get the single Premium plan
   const plan = PLAN_OPTIONS.premium;
@@ -297,20 +257,60 @@ function PricingSection() {
     popular: plan.popular
   };
 
+  // Check if user has active subscription
+  const hasActiveSubscription = isAuthenticated && user?.subscription_status === 'active';
+
   const handleGetStarted = async () => {
+    // Don't allow if user already has active subscription
+    if (hasActiveSubscription) {
+      toast.info('You already have an active Premium subscription!');
+      router.push('/dashboard');
+      return;
+    }
+
     if (isAuthenticated) {
-      // Create checkout session for premium plan
+      // Create checkout session for premium plan (existing user)
       try {
+        setIsCreatingCheckout(true);
         const checkoutUrl = await createCheckoutSession('premium');
         window.location.href = checkoutUrl;
       } catch (error) {
         console.error('Checkout error:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
+      } finally {
+        setIsCreatingCheckout(false);
       }
     } else {
-      // Store the selected plan and redirect to register
-      localStorage.setItem('selectedPlan', 'premium');
-      router.push('/register');
+      // New Stripe-first flow for new users
+      if (!email) {
+        toast.error('Please enter your email address');
+        return;
+      }
+
+      try {
+        setIsCreatingCheckout(true);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/billing/create-checkout-session-public`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create checkout session');
+        }
+
+        // Redirect to Stripe checkout
+        window.location.href = data.url;
+      } catch (error) {
+        console.error('Checkout error:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
+      } finally {
+        setIsCreatingCheckout(false);
+      }
     }
   };
 
@@ -357,12 +357,52 @@ function PricingSection() {
             ))}
           </ul>
 
-          <Button 
-            onClick={handleGetStarted}
-            className="w-full cursor-pointer bg-primary hover:bg-primary/90 text-lg py-6"
-          >
-            Start 7 Day Free Trial
-          </Button>
+          {!isAuthenticated && (
+            <div className="mb-4">
+              <Input
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full"
+                disabled={hasActiveSubscription}
+              />
+            </div>
+          )}
+
+          {hasActiveSubscription ? (
+            <div className="space-y-3">
+              <Button 
+                disabled
+                className="w-full bg-muted text-muted-foreground cursor-not-allowed text-lg py-6"
+              >
+                <Check className="mr-2 h-4 w-4" />
+                Already Have Premium Subscription
+              </Button>
+              <Button 
+                onClick={() => router.push('/dashboard')}
+                variant="outline"
+                className="w-full cursor-pointer text-lg py-6"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          ) : (
+            <Button 
+              onClick={handleGetStarted}
+              disabled={isCreatingCheckout}
+              className="w-full cursor-pointer bg-primary hover:bg-primary/90 text-lg py-6"
+            >
+              {isCreatingCheckout ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Start Premium Subscription'
+              )}
+            </Button>
+          )}
         </motion.div>
       </motion.div>
 
@@ -373,7 +413,12 @@ function PricingSection() {
         transition={{ duration: 0.8, delay: 0.6 }}
       >
         <p className="text-sm text-muted-foreground mb-2">
-          Start with a 7-day free trial • 10 generations included
+          {hasActiveSubscription ? 
+            'You\'re all set! Visit your dashboard to start generating posts.' :
+            isAuthenticated ? 
+              'Immediate access to 100 generations per month • Cancel anytime' :
+              'Pay with Stripe • Account created automatically • Cancel anytime'
+          }
         </p>
         <p className="text-sm text-muted-foreground">
           Includes access to our AI-powered content generation engine and custom AI prompts
@@ -386,7 +431,6 @@ function PricingSection() {
 export default function Home() {
   const { isAuthenticated } = useAuth();
   const router = useRouter();
-  const counterRef = useRef<CounterRef>(null);
 
   // Add keyboard shortcut for development login access
   useEffect(() => {
@@ -406,7 +450,7 @@ export default function Home() {
   }, [isAuthenticated, router]);
 
   const handleUserAdded = () => {
-    counterRef.current?.refetch();
+    // No longer needed since we removed the counter
   };
 
   return (
@@ -417,12 +461,13 @@ export default function Home() {
             Log to Post
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => router.push('/login')} className="cursor-pointer">
-              Log In
-            </Button>
-            {isAuthenticated && (
+            {isAuthenticated ? (
               <Button onClick={() => router.push('/dashboard')} className="cursor-pointer">
                 Dashboard
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => router.push('/login')} className="cursor-pointer">
+                Log In
               </Button>
             )}
           </div>
@@ -441,12 +486,7 @@ export default function Home() {
 
         {APP_MODE === 'waitlist' ? (
           // Waitlist Mode - Email Collection
-          <>
-            <WaitlistForm onUserAdded={handleUserAdded} />
-            <div className="mt-4">
-              <Counter ref={counterRef} />
-            </div>
-          </>
+          <WaitlistForm onUserAdded={handleUserAdded} />
         ) : (
           // Live Mode - Pricing Plans
           <PricingSection />

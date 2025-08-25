@@ -38,6 +38,8 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     }
   }, [loading, isAuthenticated, router]);
 
+
+
   // Keyboard shortcuts for date navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
