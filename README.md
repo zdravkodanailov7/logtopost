@@ -56,10 +56,6 @@ logtopost/
 └── README.md
 ```
 
-## 📝 License
-
-MIT License - see LICENSE file for details.
-
 ## 🔗 Learn More
 
 For a detailed walkthrough of the development process, architecture decisions, and lessons learned, check out the blog post: **[zdravkodanailov.com/blog/logtopost](https://zdravkodanailov.com/blog/logtopost)**
