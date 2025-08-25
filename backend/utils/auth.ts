@@ -1,4 +1,3 @@
-// backend/utils/auth.ts
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';

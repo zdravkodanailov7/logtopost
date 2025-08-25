@@ -1,4 +1,3 @@
-// backend/schema/index.ts
 import { pgTable, uuid, timestamp, varchar, text, date, integer, unique, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
